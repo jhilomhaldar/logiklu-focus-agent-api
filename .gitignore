@@ -216,3 +216,21 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+__pycache__/
+*.py[cod]
+venv/
+.env
+.env.*
+!.env.example
+
+.vscode/
+.idea/
+
+*.log
+logs/
+
+.DS_Store
+Thumbs.db
+
+docker-compose.override.yml

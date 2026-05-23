@@ -1,0 +1,35 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.config import settings
+from app.api.v1.router import api_router
+
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version=settings.API_VERSION,
+    description="External Agentic AI Data API for LogiKlu Focus.",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if settings.ALLOWED_ORIGINS == "*" else settings.ALLOWED_ORIGINS.split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(
+    api_router,
+    prefix=f"/api/{settings.API_VERSION}"
+)
+
+
+@app.get("/")
+def root():
+    return {
+        "status": "success",
+        "message": "Welcome to LogiKlu Focus Agent API",
+        "docs": "/docs",
+        "health": f"/api/{settings.API_VERSION}/health",
+    }
