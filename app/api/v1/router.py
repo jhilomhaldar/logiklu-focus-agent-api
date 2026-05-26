@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import health, auth_test
+from app.api.v1.endpoints import health, auth_test, accounts
 
 api_router = APIRouter()
 
@@ -12,4 +12,9 @@ api_router.include_router(
 api_router.include_router(
     auth_test.router,
     tags=["Authentication"]
+)
+
+api_router.include_router(
+    accounts.router,
+    tags=["Accounts"]
 )
