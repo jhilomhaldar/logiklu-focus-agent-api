@@ -128,6 +128,13 @@ def user_full_name(row: Dict[str, Any], prefix: str) -> str:
     return f"{first_name} {last_name}".strip()
 
 
+def user_info(row: Dict[str, Any], prefix: str) -> Dict[str, str]:
+    return {
+        "name": user_full_name(row, prefix),
+        "email": str(row.get(f"{prefix}_email") or "").strip(),
+    }
+
+
 def normalize_account_row(row: Dict[str, Any]) -> Dict[str, Any]:
     social_network = parse_json_value(row.get("social_network"))
     source_details = parse_json_value(row.get("source_details"))
@@ -142,11 +149,7 @@ def normalize_account_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "lead_category": row.get("lead_category"),
         "lead_type": row.get("lead_type"),
 
-        "lead_status": {
-            "id": row.get("lead_status_id"),
-            "name": row.get("lead_status_name"),
-            "code": row.get("lead_status_code"),
-        },
+        "lead_status": row.get("lead_status_name"),
 
         "status_change_date": convert_datetime_to_utc(
             row.get("status_change_date"),
@@ -176,35 +179,23 @@ def normalize_account_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "previous_email_marketing_used": row.get("email_marketing"),
         "previous_website_analytics_used": row.get("website_analytics"),
 
-        "owner": {
-            "id": row.get("owner"),
-            "name": user_full_name(row, "owner"),
-        },
+        "owner": user_info(row, "owner"),
 
-        "created_by": {
-            "id": row.get("created_by"),
-            "name": user_full_name(row, "created_by"),
-        },
+       "created_by": user_info(row, "created_by"),
 
-        "created_date": convert_datetime_to_utc(
+       "created_date": convert_datetime_to_utc(
             row.get("created_date"),
             row.get("timezone"),
         ),
 
-        "modified_by": {
-            "id": row.get("modified_by"),
-            "name": user_full_name(row, "modified_by"),
-        },
+        "modified_by": user_info(row, "modified_by"),
 
         "modified_date": convert_datetime_to_utc(
             row.get("modified_date"),
             row.get("timezone"),
         ),
 
-        "source": {
-            "value": row.get("source"),
-            "label": source_label(row.get("source")),
-        },
+        "source": source_label(row.get("source")),
 
         "lead_source": row.get("lead_source"),
         "lead_typeevent": row.get("lead_typeevent"),
@@ -429,12 +420,15 @@ def fetch_accounts(
 
                     owner_user.first_name AS owner_first_name,
                     owner_user.last_name AS owner_last_name,
+                    owner_user.email AS owner_email,
 
                     created_user.first_name AS created_by_first_name,
                     created_user.last_name AS created_by_last_name,
+                    created_user.email AS created_by_email,
 
                     modified_user.first_name AS modified_by_first_name,
-                    modified_user.last_name AS modified_by_last_name
+                    modified_user.last_name AS modified_by_last_name,
+                    modified_user.email AS modified_by_email
 
                 FROM lk_lead_master lm
 
