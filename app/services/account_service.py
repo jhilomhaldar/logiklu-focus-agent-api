@@ -737,3 +737,120 @@ def count_accounts(
     finally:
         if connection:
             connection.close()
+
+def fetch_account_by_id(
+    client_database: str,
+    account_id: int,
+) -> Optional[Dict[str, Any]]:
+    connection = None
+    master_database = validate_database_name(settings.MASTER_DB_NAME)
+
+    try:
+        connection = get_client_connection(client_database)
+
+        with connection.cursor() as cursor:
+            sql = f"""
+                SELECT
+                    lm.lead_id AS account_id,
+                    lm.lead_name AS account_name,
+                    lm.lead_segment,
+                    lm.lead_category,
+                    (
+                        SELECT COUNT(*)
+                        FROM lk_central_contacts cc_count
+                        WHERE cc_count.lead_id = lm.lead_id
+                          AND cc_count.active_status = 'active'
+                    ) AS active_contact_count,
+                    lm.lead_type,
+                    lm.lead_persuing_status AS lead_status_id,
+                    lsm.lead_status_name,
+                    lsm.lead_status_code,
+                    lm.status_change_date,
+                    lm.website,
+                    lm.email,
+                    lm.phone,
+                    lm.lead_description,
+                    lm.employee_lower_range,
+                    lm.employee_upper_range,
+                    lm.industry,
+                    lm.address,
+                    lm.city,
+                    lm.state,
+                    lm.country,
+                    lm.zipcode,
+                    lm.social_network,
+                    lm.crm,
+                    lm.email_marketing,
+                    lm.website_analytics,
+                    lm.owner,
+                    lm.created_by,
+                    lm.created_date,
+                    lm.modified_by,
+                    lm.modified_date,
+                    lm.timezone,
+                    lm.source,
+                    lm.lead_source,
+                    lm.lead_typeevent,
+                    lm.lead_attendees,
+                    lm.project_startdate,
+                    lm.project_enddate,
+                    lm.source_details,
+
+                    owner_user.first_name AS owner_first_name,
+                    owner_user.last_name AS owner_last_name,
+                    owner_user.email AS owner_email,
+
+                    created_user.first_name AS created_by_first_name,
+                    created_user.last_name AS created_by_last_name,
+                    created_user.email AS created_by_email,
+
+                    modified_user.first_name AS modified_by_first_name,
+                    modified_user.last_name AS modified_by_last_name,
+                    modified_user.email AS modified_by_email
+
+                FROM lk_lead_master lm
+
+                LEFT JOIN lk_lead_status_master lsm
+                    ON lsm.lead_status_id = lm.lead_persuing_status
+                   AND lsm.active_status = 'active'
+
+                LEFT JOIN `{master_database}`.zp_users owner_user
+                    ON owner_user.id = lm.owner
+
+                LEFT JOIN `{master_database}`.zp_users created_user
+                    ON created_user.id = lm.created_by
+
+                LEFT JOIN `{master_database}`.zp_users modified_user
+                    ON modified_user.id = lm.modified_by
+
+                WHERE lm.lead_id = %s
+                  AND lm.status = 'published'
+                LIMIT 1
+            """
+
+            cursor.execute(sql, (account_id,))
+            row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        account = normalize_account_row(row)
+
+        dynamic_details = fetch_account_dynamic_details(
+            client_database=client_database,
+            account_ids=[account_id],
+        )
+
+        contacts_by_account = fetch_contacts_for_accounts(
+            client_database=client_database,
+            account_ids=[account_id],
+        )
+
+        account["dynamic_fields"] = dynamic_details.get(account_id, {})
+        account["contacts"] = contacts_by_account.get(account_id, [])
+
+        return account
+
+    finally:
+        if connection:
+            connection.close()

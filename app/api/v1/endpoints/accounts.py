@@ -11,6 +11,7 @@ from app.services.account_service import (
     count_accounts,
     fetch_account_dynamic_details,
     fetch_contacts_for_accounts,
+    fetch_account_by_id,
 )
 
 router = APIRouter()
@@ -107,6 +108,58 @@ def get_accounts(
                 message="Failed to fetch accounts",
                 error_code="ACCOUNTS_FETCH_FAILED",
                 data={
+                    "error": str(exc),
+                    "timestamp": current_utc_datetime(),
+                },
+            ),
+        )
+    
+@router.get("/accounts/{account_id}")
+def get_account_detail(
+    account_id: int,
+    request: Request,
+    auth_context: dict = Depends(authenticate_request),
+):
+    try:
+        client_database = auth_context.get("client_database")
+
+        account = fetch_account_by_id(
+            client_database=client_database,
+            account_id=account_id,
+        )
+
+        if not account:
+            return JSONResponse(
+                status_code=404,
+                content=error_response(
+                    message="Account not found",
+                    error_code="ACCOUNT_NOT_FOUND",
+                    data={
+                        "account_id": account_id,
+                        "timestamp": current_utc_datetime(),
+                    },
+                ),
+            )
+
+        return success_response(
+            message="Account detail fetched successfully",
+            meta={
+                "generated_at": current_utc_datetime(),
+                "account_id": account_id,
+            },
+            data={
+                "account": account,
+            },
+        )
+
+    except Exception as exc:
+        return JSONResponse(
+            status_code=500,
+            content=error_response(
+                message="Failed to fetch account detail",
+                error_code="ACCOUNT_DETAIL_FETCH_FAILED",
+                data={
+                    "account_id": account_id,
                     "error": str(exc),
                     "timestamp": current_utc_datetime(),
                 },
