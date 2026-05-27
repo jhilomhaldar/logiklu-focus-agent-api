@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import health, auth_test, accounts, contacts
+from app.api.v1.endpoints import health, auth_test, accounts, contacts, usage
 
 api_router = APIRouter()
 
@@ -22,4 +22,9 @@ api_router.include_router(
 api_router.include_router(
     contacts.router,
     tags=["Contacts"]
+)
+
+api_router.include_router(
+    usage.router,
+    tags=["Usage"]
 )
