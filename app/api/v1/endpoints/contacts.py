@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.response import success_response, error_response, current_utc_datetime
 from app.core.security import authenticate_request
-from app.services.contact_service import fetch_contacts, count_contacts
+from app.services.contact_service import fetch_contacts, count_contacts, fetch_contact_by_id
 
 router = APIRouter()
 
@@ -71,6 +71,58 @@ def get_contacts(
                 message="Failed to fetch contacts",
                 error_code="CONTACTS_FETCH_FAILED",
                 data={
+                    "error": str(exc),
+                    "timestamp": current_utc_datetime(),
+                },
+            ),
+        )
+    
+@router.get("/contacts/{contact_id}")
+def get_contact_detail(
+    contact_id: int,
+    request: Request,
+    auth_context: dict = Depends(authenticate_request),
+):
+    try:
+        client_database = auth_context.get("client_database")
+
+        contact = fetch_contact_by_id(
+            client_database=client_database,
+            contact_id=contact_id,
+        )
+
+        if not contact:
+            return JSONResponse(
+                status_code=404,
+                content=error_response(
+                    message="Contact not found",
+                    error_code="CONTACT_NOT_FOUND",
+                    data={
+                        "contact_id": contact_id,
+                        "timestamp": current_utc_datetime(),
+                    },
+                ),
+            )
+
+        return success_response(
+            message="Contact detail fetched successfully",
+            meta={
+                "generated_at": current_utc_datetime(),
+                "contact_id": contact_id,
+            },
+            data={
+                "contact": contact,
+            },
+        )
+
+    except Exception as exc:
+        return JSONResponse(
+            status_code=500,
+            content=error_response(
+                message="Failed to fetch contact detail",
+                error_code="CONTACT_DETAIL_FETCH_FAILED",
+                data={
+                    "contact_id": contact_id,
                     "error": str(exc),
                     "timestamp": current_utc_datetime(),
                 },

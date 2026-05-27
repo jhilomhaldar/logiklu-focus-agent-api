@@ -493,3 +493,163 @@ def count_contacts(
     finally:
         if connection:
             connection.close()
+
+def fetch_contact_by_id(
+    client_database: str,
+    contact_id: int,
+) -> Optional[Dict[str, Any]]:
+    connection = None
+    master_database = validate_database_name(settings.MASTER_DB_NAME)
+
+    try:
+        connection = get_client_connection(client_database)
+
+        with connection.cursor() as cursor:
+            sql = f"""
+                SELECT
+                    cc.contact_id,
+                    cc.lead_id,
+                    cc.contact_type,
+                    cc.first_name,
+                    cc.last_name,
+                    cc.email,
+                    cc.primary_phone,
+                    cc.whatsappno,
+                    cc.alternative_phone,
+                    cc.alternative_emails,
+                    cc.social_network,
+                    cc.address,
+                    cc.city,
+                    cc.state,
+                    cc.country,
+                    cc.zipcode,
+                    cc.avater_url,
+                    cc.department,
+                    cc.designation,
+                    cc.source,
+                    cc.source_details,
+                    cc.owner,
+                    cc.created_by,
+                    cc.created_date,
+                    cc.modified_by,
+                    cc.modified_date,
+                    cc.timezone,
+                    cc.notes,
+
+                    owner_user.first_name AS owner_first_name,
+                    owner_user.last_name AS owner_last_name,
+                    owner_user.email AS owner_email,
+
+                    created_user.first_name AS created_by_first_name,
+                    created_user.last_name AS created_by_last_name,
+                    created_user.email AS created_by_email,
+
+                    modified_user.first_name AS modified_by_first_name,
+                    modified_user.last_name AS modified_by_last_name,
+                    modified_user.email AS modified_by_email,
+
+                    lm.lead_id AS account_id,
+                    lm.lead_name AS account_name,
+                    lm.lead_segment AS account_lead_segment,
+                    lm.lead_category AS account_lead_category,
+                    (
+                        SELECT COUNT(*)
+                        FROM lk_central_contacts cc_count
+                        WHERE cc_count.lead_id = lm.lead_id
+                          AND cc_count.active_status = 'active'
+                    ) AS account_active_contact_count,
+                    lm.lead_type AS account_lead_type,
+                    lsm.lead_status_name AS account_lead_status_name,
+                    lm.status_change_date AS account_status_change_date,
+                    lm.website AS account_website,
+                    lm.email AS account_email,
+                    lm.phone AS account_phone,
+                    lm.lead_description AS account_lead_description,
+                    lm.employee_lower_range AS account_employee_lower_range,
+                    lm.employee_upper_range AS account_employee_upper_range,
+                    lm.industry AS account_industry,
+                    lm.address AS account_address,
+                    lm.city AS account_city,
+                    lm.state AS account_state,
+                    lm.country AS account_country,
+                    lm.zipcode AS account_zipcode,
+                    lm.social_network AS account_social_network,
+                    lm.crm AS account_crm,
+                    lm.email_marketing AS account_email_marketing,
+                    lm.website_analytics AS account_website_analytics,
+                    lm.timezone AS account_timezone,
+                    lm.source AS account_source,
+                    lm.lead_source AS account_lead_source,
+                    lm.lead_typeevent AS account_lead_typeevent,
+                    lm.lead_attendees AS account_lead_attendees,
+                    lm.project_startdate AS account_project_startdate,
+                    lm.project_enddate AS account_project_enddate,
+                    lm.source_details AS account_source_details,
+                    lm.created_date AS account_created_date,
+                    lm.modified_date AS account_modified_date,
+
+                    account_owner.first_name AS account_owner_first_name,
+                    account_owner.last_name AS account_owner_last_name,
+                    account_owner.email AS account_owner_email,
+
+                    account_created_user.first_name AS account_created_by_first_name,
+                    account_created_user.last_name AS account_created_by_last_name,
+                    account_created_user.email AS account_created_by_email,
+
+                    account_modified_user.first_name AS account_modified_by_first_name,
+                    account_modified_user.last_name AS account_modified_by_last_name,
+                    account_modified_user.email AS account_modified_by_email
+
+                FROM lk_central_contacts cc
+
+                LEFT JOIN lk_lead_master lm
+                    ON lm.lead_id = cc.lead_id
+
+                LEFT JOIN lk_lead_status_master lsm
+                    ON lsm.lead_status_id = lm.lead_persuing_status
+                   AND lsm.active_status = 'active'
+
+                LEFT JOIN `{master_database}`.zp_users owner_user
+                    ON owner_user.id = cc.owner
+
+                LEFT JOIN `{master_database}`.zp_users created_user
+                    ON created_user.id = cc.created_by
+
+                LEFT JOIN `{master_database}`.zp_users modified_user
+                    ON modified_user.id = cc.modified_by
+
+                LEFT JOIN `{master_database}`.zp_users account_owner
+                    ON account_owner.id = lm.owner
+
+                LEFT JOIN `{master_database}`.zp_users account_created_user
+                    ON account_created_user.id = lm.created_by
+
+                LEFT JOIN `{master_database}`.zp_users account_modified_user
+                    ON account_modified_user.id = lm.modified_by
+
+                WHERE cc.contact_id = %s
+                  AND cc.active_status = 'active'
+
+                LIMIT 1
+            """
+
+            cursor.execute(sql, (contact_id,))
+            row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        contact = normalize_contact_with_account(row)
+
+        dynamic_details = fetch_contact_dynamic_details(
+            client_database=client_database,
+            contact_ids=[contact_id],
+        )
+
+        contact["dynamic_fields"] = dynamic_details.get(contact_id, {})
+
+        return contact
+
+    finally:
+        if connection:
+            connection.close()
