@@ -22,10 +22,7 @@ app.add_middleware(
 
 app.middleware("http")(api_request_logger_middleware)
 
-app.include_router(
-    api_router,
-    prefix=f"/api/{settings.API_VERSION}"
-)
+app.include_router(api_router)
 
 
 @app.get("/")

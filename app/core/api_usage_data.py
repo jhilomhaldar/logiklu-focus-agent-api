@@ -1,7 +1,7 @@
 API_USAGE_DATA = {
     "title": "LogiKlu Agent API Guide",
     "subtitle": "Simple instructions for using LogiKlu account and contact APIs.",
-    "base_url": "https://api.logiklu.com/api/v1",
+    "base_url": "https://api.logiklu.com",
     "auth": {
         "title": "Authentication",
         "description": "Every protected API request must include your API key in the request header.",
@@ -12,7 +12,7 @@ API_USAGE_DATA = {
                 "description": "Your assigned API key."
             }
         ],
-        "example": 'curl -X GET "https://api.logiklu.com/api/v1/accounts" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+        "example": 'curl -X GET "https://api.logiklu.com/accounts" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
     },
     "response_format": {
         "success": {
@@ -192,37 +192,37 @@ API_USAGE_DATA = {
                         {
                             "title": "Get first 20 active accounts",
                             "description": "Use this when you want the first page of active accounts.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/accounts?limit=20&offset=0" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/accounts?limit=20&offset=0" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Search account generally",
                             "description": "This searches common account fields.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/accounts?search=Japan&limit=20&offset=0" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/accounts?search=Japan&limit=20&offset=0" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Search by account name",
                             "description": "Use search_by when you want to search one specific field.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/accounts?search=Hamamatsu&search_by=lead_name" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/accounts?search=Hamamatsu&search_by=lead_name" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Get only Lead accounts",
                             "description": "Lead means raw category is lead and the account has active contacts.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/accounts?computed_lead_category=lead" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/accounts?computed_lead_category=lead" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Get only Potential Lead accounts",
                             "description": "Potential Lead means suspect, or lead with no active contacts.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/accounts?computed_lead_category=potential_lead" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/accounts?computed_lead_category=potential_lead" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Search assigned accounts",
                             "description": "This searches accounts assigned to selected user IDs.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/accounts?search=4,8&search_by=assigned_to" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/accounts?search=4,8&search_by=assigned_to" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Advanced filter by country",
                             "description": "Use filters when you need field/operator/value style search.",
-                            "curl": 'curl -X GET \'https://api.logiklu.com/api/v1/accounts?filters=[{"field":"country","operator":"eq","value":"Japan"}]\' \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET \'https://api.logiklu.com/accounts?filters=[{"field":"country","operator":"eq","value":"Japan"}]\' \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         }
                     ]
                 },
@@ -245,7 +245,7 @@ API_USAGE_DATA = {
                         {
                             "title": "Get account detail",
                             "description": "Use this when you already know the account ID.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/accounts/9626" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/accounts/9626" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         }
                     ]
                 }
@@ -413,42 +413,42 @@ API_USAGE_DATA = {
                         {
                             "title": "Get first 50 contacts",
                             "description": "Use this when you want the first page of active contacts.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/contacts?limit=50&offset=0" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/contacts?limit=50&offset=0" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Search contacts generally",
                             "description": "This searches common contact fields.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/contacts?search=manager" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/contacts?search=manager" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Search by contact name",
                             "description": "Search first name, last name, and full name.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/contacts?search=John&search_by=name" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/contacts?search=John&search_by=name" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Search by email",
                             "description": "Search contacts by email.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/contacts?search=gmail.com&search_by=email" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/contacts?search=gmail.com&search_by=email" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Contacts under one account",
                             "description": "Fetch contacts linked with one account ID.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/contacts?account_id=1094" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/contacts?account_id=1094" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Search by account",
                             "description": "Search contacts by account ID, account name, or account website.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/contacts?account_search=LogiKlu" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/contacts?account_search=LogiKlu" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Only contacts linked to accounts",
                             "description": "Use this when you do not want standalone/unlinked contacts.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/contacts?associated_accounts_only=true" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/contacts?associated_accounts_only=true" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         },
                         {
                             "title": "Search by owner IDs",
                             "description": "Search contacts owned by selected user IDs.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/contacts?search=4,8&search_by=owner" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/contacts?search=4,8&search_by=owner" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         }
                     ]
                 },
@@ -471,7 +471,7 @@ API_USAGE_DATA = {
                         {
                             "title": "Get contact detail",
                             "description": "Use this when you already know the contact ID.",
-                            "curl": 'curl -X GET "https://api.logiklu.com/api/v1/contacts/101" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
+                            "curl": 'curl -X GET "https://api.logiklu.com/contacts/101" \\\n  -H "X-API-KEY: YOUR_API_KEY"'
                         }
                     ]
                 }
