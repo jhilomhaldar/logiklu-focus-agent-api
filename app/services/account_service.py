@@ -62,7 +62,12 @@ def format_phone(phone_value: Any) -> str:
     parsed = parse_json_value(phone_value)
 
     if isinstance(parsed, dict):
-        country_code = str(parsed.get("country_code") or "").strip()
+        country_code = str(
+            parsed.get("country_code")
+            or parsed.get("counyry_code")
+            or ""
+        ).strip()
+
         phone = str(parsed.get("phone") or "").strip()
 
         if country_code and phone:
@@ -135,7 +140,74 @@ def user_info(row: Dict[str, Any], prefix: str) -> Dict[str, str]:
     }
 
 
-def normalize_account_row(row: Dict[str, Any]) -> Dict[str, Any]:
+def computed_lead_category(raw_category: Any, active_contact_count: int) -> str:
+    category = str(raw_category or "").strip().lower()
+
+    if category == "customer":
+        return "Customer"
+
+    if category == "lead":
+        if active_contact_count > 0:
+            return "Lead"
+
+        return "Potential Lead"
+
+    if category == "suspect":
+        return "Potential Lead"
+
+    return category[:1].upper() + category[1:] if category else ""
+
+
+def build_computed_lead_category_condition(
+    computed_category: str,
+    where_clauses: List[str],
+) -> None:
+    category = str(computed_category or "all").strip().lower()
+
+    if category == "all":
+        return
+
+    if category == "lead":
+        where_clauses.append("lm.lead_category = 'lead'")
+        where_clauses.append(
+            """
+            (
+                SELECT COUNT(*)
+                FROM lk_central_contacts cc_lead
+                WHERE cc_lead.lead_id = lm.lead_id
+                  AND cc_lead.active_status = 'active'
+            ) > 0
+            """
+        )
+        return
+
+    if category == "potential_lead":
+        where_clauses.append(
+            """
+            (
+                lm.lead_category = 'suspect'
+                OR
+                (
+                    lm.lead_category = 'lead'
+                    AND
+                    (
+                        SELECT COUNT(*)
+                        FROM lk_central_contacts cc_potential
+                        WHERE cc_potential.lead_id = lm.lead_id
+                          AND cc_potential.active_status = 'active'
+                    ) = 0
+                )
+            )
+            """
+        )
+        return
+
+    if category == "customer":
+        where_clauses.append("lm.lead_category = 'customer'")
+        return
+
+
+def normalize_contact_row(row: Dict[str, Any]) -> Dict[str, Any]:
     social_network = parse_json_value(row.get("social_network"))
     source_details = parse_json_value(row.get("source_details"))
 
@@ -143,67 +215,194 @@ def normalize_account_row(row: Dict[str, Any]) -> Dict[str, Any]:
         social_network = {}
 
     return {
+        "contact_id": row.get("contact_id"),
+        "name": f"{str(row.get('first_name') or '').strip()} {str(row.get('last_name') or '').strip()}".strip(),
+        "email": row.get("email"),
+        "phone": format_phone(row.get("primary_phone")),
+        "whatsapp": format_phone(row.get("whatsappno")),
+        "alternative_phone": format_phone(row.get("alternative_phone")),
+        "alternative_emails": row.get("alternative_emails"),
+        "social_network": social_network,
+        "address": row.get("address"),
+        "city": row.get("city"),
+        "state": row.get("state"),
+        "country": row.get("country"),
+        "zipcode": row.get("zipcode"),
+        "avatar": row.get("avater_url"),
+        "department": row.get("department"),
+        "designation": row.get("designation"),
+        "source": source_label(row.get("source")),
+        "source_details": source_details,
+        "owner": user_info(row, "owner"),
+        "created_by": user_info(row, "created_by"),
+        "created_date": convert_datetime_to_utc(
+            row.get("created_date"),
+            row.get("timezone"),
+        ),
+        "modified_by": user_info(row, "modified_by"),
+        "modified_date": convert_datetime_to_utc(
+            row.get("modified_date"),
+            row.get("timezone"),
+        ),
+        "notes": row.get("notes"),
+    }
+
+
+def fetch_contacts_for_accounts(
+    client_database: str,
+    account_ids: List[int],
+) -> Dict[int, List[Dict[str, Any]]]:
+    if not account_ids:
+        return {}
+
+    connection = None
+    master_database = validate_database_name(settings.MASTER_DB_NAME)
+
+    try:
+        connection = get_client_connection(client_database)
+
+        placeholders = ",".join(["%s"] * len(account_ids))
+
+        with connection.cursor() as cursor:
+            sql = f"""
+                SELECT
+                    cc.contact_id,
+                    cc.lead_id,
+                    cc.first_name,
+                    cc.last_name,
+                    cc.email,
+                    cc.primary_phone,
+                    cc.whatsappno,
+                    cc.alternative_phone,
+                    cc.alternative_emails,
+                    cc.social_network,
+                    cc.address,
+                    cc.city,
+                    cc.state,
+                    cc.country,
+                    cc.zipcode,
+                    cc.avater_url,
+                    cc.department,
+                    cc.designation,
+                    cc.source,
+                    cc.source_details,
+                    cc.owner,
+                    cc.created_by,
+                    cc.created_date,
+                    cc.modified_by,
+                    cc.modified_date,
+                    cc.timezone,
+                    cc.notes,
+
+                    owner_user.first_name AS owner_first_name,
+                    owner_user.last_name AS owner_last_name,
+                    owner_user.email AS owner_email,
+
+                    created_user.first_name AS created_by_first_name,
+                    created_user.last_name AS created_by_last_name,
+                    created_user.email AS created_by_email,
+
+                    modified_user.first_name AS modified_by_first_name,
+                    modified_user.last_name AS modified_by_last_name,
+                    modified_user.email AS modified_by_email
+
+                FROM lk_central_contacts cc
+
+                LEFT JOIN `{master_database}`.zp_users owner_user
+                    ON owner_user.id = cc.owner
+
+                LEFT JOIN `{master_database}`.zp_users created_user
+                    ON created_user.id = cc.created_by
+
+                LEFT JOIN `{master_database}`.zp_users modified_user
+                    ON modified_user.id = cc.modified_by
+
+                WHERE cc.lead_id IN ({placeholders})
+                  AND cc.active_status = 'active'
+
+                ORDER BY cc.modified_date DESC, cc.created_date DESC
+            """
+
+            cursor.execute(sql, tuple(account_ids))
+            rows = cursor.fetchall()
+
+        contacts_by_account: Dict[int, List[Dict[str, Any]]] = {}
+
+        for row in rows:
+            lead_id = int(row.get("lead_id"))
+
+            if lead_id not in contacts_by_account:
+                contacts_by_account[lead_id] = []
+
+            contacts_by_account[lead_id].append(normalize_contact_row(row))
+
+        return contacts_by_account
+
+    finally:
+        if connection:
+            connection.close()
+
+
+def normalize_account_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    social_network = parse_json_value(row.get("social_network"))
+    source_details = parse_json_value(row.get("source_details"))
+
+    if not isinstance(social_network, dict):
+        social_network = {}
+
+    active_contact_count = int(row.get("active_contact_count") or 0)
+
+    return {
         "account_id": row.get("account_id"),
         "account_name": row.get("account_name"),
         "lead_segment": row.get("lead_segment"),
-        "lead_category": row.get("lead_category"),
+        "lead_category": computed_lead_category(
+            row.get("lead_category"),
+            active_contact_count,
+        ),
+        "contact_count": active_contact_count,
         "lead_type": row.get("lead_type"),
-
         "lead_status": row.get("lead_status_name"),
-
         "status_change_date": convert_datetime_to_utc(
             row.get("status_change_date"),
             row.get("timezone"),
         ),
-
         "website": row.get("website"),
         "email": row.get("email"),
         "phone": format_phone(row.get("phone")),
         "lead_description": row.get("lead_description"),
-
         "employee_count": format_employee_count(
             row.get("employee_lower_range"),
             row.get("employee_upper_range"),
         ),
-
         "industry": row.get("industry"),
         "address": row.get("address"),
         "city": row.get("city"),
         "state": row.get("state"),
         "country": row.get("country"),
         "zipcode": row.get("zipcode"),
-
         "social_network": social_network,
-
         "previous_crm_used": row.get("crm"),
         "previous_email_marketing_used": row.get("email_marketing"),
         "previous_website_analytics_used": row.get("website_analytics"),
-
         "owner": user_info(row, "owner"),
-
-       "created_by": user_info(row, "created_by"),
-
-       "created_date": convert_datetime_to_utc(
+        "created_by": user_info(row, "created_by"),
+        "created_date": convert_datetime_to_utc(
             row.get("created_date"),
             row.get("timezone"),
         ),
-
         "modified_by": user_info(row, "modified_by"),
-
         "modified_date": convert_datetime_to_utc(
             row.get("modified_date"),
             row.get("timezone"),
         ),
-
         "source": source_label(row.get("source")),
-
         "lead_source": row.get("lead_source"),
         "lead_typeevent": row.get("lead_typeevent"),
         "lead_attendees": row.get("lead_attendees"),
         "project_startdate": str(row.get("project_startdate")) if row.get("project_startdate") else None,
         "project_enddate": str(row.get("project_enddate")) if row.get("project_enddate") else None,
         "source_details": source_details,
-
         "timezone": row.get("timezone"),
     }
 
@@ -261,7 +460,7 @@ def build_dynamic_filters(filters: Optional[List[Dict[str, Any]]]) -> Tuple[List
             where_clauses.append(f"{column} LIKE %s")
             params.append(f"%{value}")
 
-        elif operator == "in" and isinstance(value, list):
+        elif operator == "in" and isinstance(value, list) and value:
             placeholders = ",".join(["%s"] * len(value))
             where_clauses.append(f"{column} IN ({placeholders})")
             params.extend(value)
@@ -302,6 +501,7 @@ def fetch_account_dynamic_details(
                   AND field_name IS NOT NULL
                   AND field_name <> ''
             """
+
             cursor.execute(sql, tuple(account_ids))
             rows = cursor.fetchall()
 
@@ -330,6 +530,7 @@ def fetch_accounts(
     offset: int = 0,
     search: Optional[str] = None,
     lead_publish_status: str = "active",
+    computed_lead_category: str = "all",
     filters: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     connection = None
@@ -346,6 +547,7 @@ def fetch_accounts(
     params: List[Any] = []
 
     build_publish_status_condition(lead_publish_status, where_clauses)
+    build_computed_lead_category_condition(computed_lead_category, where_clauses)
 
     if search:
         where_clauses.append(
@@ -383,6 +585,12 @@ def fetch_accounts(
                     lm.lead_name AS account_name,
                     lm.lead_segment,
                     lm.lead_category,
+                    (
+                        SELECT COUNT(*)
+                        FROM lk_central_contacts cc_count
+                        WHERE cc_count.lead_id = lm.lead_id
+                          AND cc_count.active_status = 'active'
+                    ) AS active_contact_count,
                     lm.lead_type,
                     lm.lead_persuing_status AS lead_status_id,
                     lsm.lead_status_name,
@@ -466,6 +674,7 @@ def count_accounts(
     client_database: str,
     search: Optional[str] = None,
     lead_publish_status: str = "active",
+    computed_lead_category: str = "all",
     filters: Optional[List[Dict[str, Any]]] = None,
 ) -> int:
     connection = None
@@ -477,6 +686,7 @@ def count_accounts(
     params: List[Any] = []
 
     build_publish_status_condition(lead_publish_status, where_clauses)
+    build_computed_lead_category_condition(computed_lead_category, where_clauses)
 
     if search:
         where_clauses.append(
@@ -511,11 +721,14 @@ def count_accounts(
             sql = f"""
                 SELECT COUNT(*) AS total_records
                 FROM lk_lead_master lm
+
                 LEFT JOIN lk_lead_status_master lsm
                     ON lsm.lead_status_id = lm.lead_persuing_status
                    AND lsm.active_status = 'active'
+
                 WHERE {where_sql}
             """
+
             cursor.execute(sql, tuple(params))
             row = cursor.fetchone()
 

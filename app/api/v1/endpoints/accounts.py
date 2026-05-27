@@ -10,6 +10,7 @@ from app.services.account_service import (
     fetch_accounts,
     count_accounts,
     fetch_account_dynamic_details,
+    fetch_contacts_for_accounts,
 )
 
 router = APIRouter()
@@ -39,8 +40,8 @@ def get_accounts(
     offset: int = Query(default=0, ge=0),
     search: Optional[str] = Query(default=None),
     lead_publish_status: str = Query(default="active"),
+    computed_lead_category: str = Query(default="all"),
     filters: Optional[str] = Query(default=None),
-    include_details: bool = Query(default=True),
 ):
     try:
         client_database = auth_context.get("client_database")
@@ -52,6 +53,7 @@ def get_accounts(
             offset=offset,
             search=search,
             lead_publish_status=lead_publish_status,
+            computed_lead_category=computed_lead_category,
             filters=parsed_filters,
         )
 
@@ -59,10 +61,11 @@ def get_accounts(
             client_database=client_database,
             search=search,
             lead_publish_status=lead_publish_status,
+            computed_lead_category=computed_lead_category,
             filters=parsed_filters,
         )
 
-        if include_details and accounts:
+        if accounts:
             account_ids = [int(account["account_id"]) for account in accounts]
 
             dynamic_details = fetch_account_dynamic_details(
@@ -70,19 +73,25 @@ def get_accounts(
                 account_ids=account_ids,
             )
 
+            contacts_by_account = fetch_contacts_for_accounts(
+                client_database=client_database,
+                account_ids=account_ids,
+            )
+
             for account in accounts:
                 account_id = int(account["account_id"])
                 account["dynamic_fields"] = dynamic_details.get(account_id, {})
+                account["contacts"] = contacts_by_account.get(account_id, [])
 
         return success_response(
             message="Accounts fetched successfully",
-            meta={                
-                "generated_at": current_utc_datetime(),                
+            meta={
+                "generated_at": current_utc_datetime(),
                 "limit": limit,
                 "offset": offset,
                 "search": search,
                 "lead_publish_status": lead_publish_status,
-                "include_details": include_details,
+                "computed_lead_category": computed_lead_category,
                 "record_count": len(accounts),
                 "total_records": total_records,
             },
