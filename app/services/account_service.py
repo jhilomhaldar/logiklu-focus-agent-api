@@ -44,6 +44,41 @@ ALLOWED_FILTER_FIELDS = {
     "status_change_date": "lm.status_change_date",
 }
 
+ACCOUNT_SEARCH_FIELDS = {
+    "lead_name": "lm.lead_name",
+    "lead_segment": "lm.lead_segment",
+    "lead_category": "lm.lead_category",
+    "lead_type": "lm.lead_type",
+    "lead_persuing_status": "lm.lead_persuing_status",
+    "website": "lm.website",
+    "email": "lm.email",
+    "phone": "lm.phone",
+    "industry": "lm.industry",
+    "city": "lm.city",
+    "state": "lm.state",
+    "country": "lm.country",
+    "zipcode": "lm.zipcode",
+    "owner": "lm.owner",
+    "created_by": "lm.created_by",
+    "source": "lm.source",
+    "lead_source": "lm.lead_source",
+    "assigned_to": "assigned_to",
+    "employee_count": "employee_count",
+}
+
+
+MULTI_VALUE_ACCOUNT_SEARCH_FIELDS = {
+    "lead_category",
+    "lead_type",
+    "lead_persuing_status",
+    "country",
+    "owner",
+    "created_by",
+    "source",
+    "lead_source",
+    "assigned_to",
+}
+
 
 def parse_json_value(value: Any) -> Any:
     if value is None or value == "":
@@ -523,12 +558,188 @@ def fetch_account_dynamic_details(
         if connection:
             connection.close()
 
+def split_search_values(value: Any) -> List[str]:
+    if value is None:
+        return []
+
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    value_string = str(value).strip()
+
+    if not value_string:
+        return []
+
+    try:
+        parsed = json.loads(value_string)
+
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    except Exception:
+        pass
+
+    return [item.strip() for item in value_string.split(",") if item.strip()]
+
+
+def normalize_lead_segment_values(values: List[str]) -> List[str]:
+    normalized = []
+
+    for value in values:
+        clean_value = value.strip().lower()
+
+        if clean_value in ["company", "lk_company_master"]:
+            normalized.append("company")
+
+        elif clean_value in ["contact", "lk_central_contacts"]:
+            normalized.append("contact")
+
+    return normalized
+
+
+def normalize_lead_category_values(values: List[str]) -> List[str]:
+    normalized = []
+
+    for value in values:
+        clean_value = value.strip().lower()
+
+        if clean_value in ["potential lead", "potential_lead", "suspect"]:
+            normalized.append("suspect")
+
+        elif clean_value in ["lead"]:
+            normalized.append("lead")
+
+        elif clean_value in ["customer"]:
+            normalized.append("customer")
+
+    return normalized
+
+
+def build_in_condition(
+    column: str,
+    values: List[Any],
+    where_clauses: List[str],
+    params: List[Any],
+) -> None:
+    if not values:
+        return
+
+    placeholders = ",".join(["%s"] * len(values))
+    where_clauses.append(f"{column} IN ({placeholders})")
+    params.extend(values)
+
+
+def build_account_specific_search_condition(
+    search: Optional[str],
+    search_by: Optional[str],
+    where_clauses: List[str],
+    params: List[Any],
+) -> None:
+    if not search or not search_by:
+        return
+
+    search_by_value = str(search_by or "").strip().lower()
+
+    if search_by_value not in ACCOUNT_SEARCH_FIELDS:
+        return
+
+    values = split_search_values(search)
+
+    if not values:
+        return
+
+    # lead_name uses LIKE because this is usually text search.
+    if search_by_value == "lead_name":
+        where_clauses.append("lm.lead_name LIKE %s")
+        params.append(f"%{values[0]}%")
+        return
+
+    # lead_segment accepts Company / Contact or raw values.
+    if search_by_value == "lead_segment":
+        normalized_values = normalize_lead_segment_values(values)
+        build_in_condition("lm.lead_segment", normalized_values, where_clauses, params)
+        return
+
+    # lead_category accepts Potential Lead / Lead / Customer.
+    # This is raw category mapping. For computed category, use computed_lead_category parameter.
+    if search_by_value == "lead_category":
+        normalized_values = normalize_lead_category_values(values)
+        build_in_condition("lm.lead_category", normalized_values, where_clauses, params)
+        return
+
+    # employee_count searches lower and upper range text.
+    if search_by_value == "employee_count":
+        where_clauses.append(
+            """
+            (
+                lm.employee_lower_range LIKE %s
+                OR lm.employee_upper_range LIKE %s
+            )
+            """
+        )
+        params.extend([f"%{values[0]}%", f"%{values[0]}%"])
+        return
+
+    # assigned_to uses lk_lead_assign.
+    if search_by_value == "assigned_to":
+        numeric_values = []
+
+        for value in values:
+            try:
+                numeric_values.append(int(value))
+            except Exception:
+                pass
+
+        if not numeric_values:
+            return
+
+        placeholders = ",".join(["%s"] * len(numeric_values))
+
+        where_clauses.append(
+            f"""
+            EXISTS (
+                SELECT 1
+                FROM lk_lead_assign la
+                WHERE la.lead_id = lm.lead_id
+                  AND la.user_id IN ({placeholders})
+            )
+            """
+        )
+        params.extend(numeric_values)
+        return
+
+    column = ACCOUNT_SEARCH_FIELDS[search_by_value]
+
+    # Multi value exact matching.
+    if search_by_value in MULTI_VALUE_ACCOUNT_SEARCH_FIELDS:
+        build_in_condition(column, values, where_clauses, params)
+        return
+
+    # Text-based specific fields use LIKE.
+    if search_by_value in [
+        "website",
+        "email",
+        "phone",
+        "industry",
+        "city",
+        "state",
+        "country",
+        "zipcode",
+        "lead_source",
+    ]:
+        where_clauses.append(f"{column} LIKE %s")
+        params.append(f"%{values[0]}%")
+        return
+
+    # Numeric/single-value fallback.
+    where_clauses.append(f"{column} = %s")
+    params.append(values[0])
 
 def fetch_accounts(
     client_database: str,
     limit: int = 20,
     offset: int = 0,
     search: Optional[str] = None,
+    search_by: Optional[str] = None,
     lead_publish_status: str = "active",
     computed_lead_category: str = "all",
     filters: Optional[List[Dict[str, Any]]] = None,
@@ -549,7 +760,15 @@ def fetch_accounts(
     build_publish_status_condition(lead_publish_status, where_clauses)
     build_computed_lead_category_condition(computed_lead_category, where_clauses)
 
-    if search:
+    if search and search_by:
+        build_account_specific_search_condition(
+            search=search,
+            search_by=search_by,
+            where_clauses=where_clauses,
+            params=params,
+        )
+
+    elif search:
         where_clauses.append(
             """
             (
@@ -673,6 +892,7 @@ def fetch_accounts(
 def count_accounts(
     client_database: str,
     search: Optional[str] = None,
+    search_by: Optional[str] = None,
     lead_publish_status: str = "active",
     computed_lead_category: str = "all",
     filters: Optional[List[Dict[str, Any]]] = None,
@@ -688,7 +908,15 @@ def count_accounts(
     build_publish_status_condition(lead_publish_status, where_clauses)
     build_computed_lead_category_condition(computed_lead_category, where_clauses)
 
-    if search:
+    if search and search_by:
+        build_account_specific_search_condition(
+            search=search,
+            search_by=search_by,
+            where_clauses=where_clauses,
+            params=params,
+        )
+
+    elif search:
         where_clauses.append(
             """
             (
