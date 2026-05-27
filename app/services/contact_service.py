@@ -11,18 +11,87 @@ from app.services.account_service import (
 
 CONTACT_SEARCH_FIELDS = {
     "name": ["cc.first_name", "cc.last_name"],
+    "first_name": ["cc.first_name"],
+    "last_name": ["cc.last_name"],
     "email": ["cc.email"],
     "phone": ["cc.primary_phone"],
     "whatsapp": ["cc.whatsappno"],
+    "alternative_phone": ["cc.alternative_phone"],
+    "alternative_emails": ["cc.alternative_emails"],
     "address": ["cc.address"],
     "city": ["cc.city"],
     "state": ["cc.state"],
     "country": ["cc.country"],
+    "zipcode": ["cc.zipcode"],
     "department": ["cc.department"],
     "designation": ["cc.designation"],
     "contact_type": ["cc.contact_type"],
+    "source": ["cc.source"],
+    "owner": ["cc.owner"],
+    "created_by": ["cc.created_by"],
+    "modified_by": ["cc.modified_by"],
 }
 
+
+MULTI_VALUE_CONTACT_SEARCH_FIELDS = {
+    "contact_type",
+    "country",
+    "state",
+    "city",
+    "source",
+    "owner",
+    "created_by",
+    "modified_by",
+}
+
+def split_contact_search_values(value: Any) -> List[str]:
+    if value is None:
+        return []
+
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    value_string = str(value).strip()
+
+    if not value_string:
+        return []
+
+    try:
+        import json
+        parsed = json.loads(value_string)
+
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    except Exception:
+        pass
+
+    return [item.strip() for item in value_string.split(",") if item.strip()]
+
+
+def build_contact_in_condition(
+    column: str,
+    values: List[Any],
+    where_clauses: List[str],
+    params: List[Any],
+) -> None:
+    if not values:
+        return
+
+    placeholders = ",".join(["%s"] * len(values))
+    where_clauses.append(f"{column} IN ({placeholders})")
+    params.extend(values)
+
+
+def normalize_numeric_values(values: List[str]) -> List[int]:
+    numeric_values = []
+
+    for value in values:
+        try:
+            numeric_values.append(int(value))
+        except Exception:
+            pass
+
+    return numeric_values
 
 def build_contact_search_condition(
     search: Optional[str],
@@ -33,54 +102,87 @@ def build_contact_search_condition(
     if not search:
         return
 
-    search_value = f"%{search}%"
     search_by_value = str(search_by or "").strip().lower()
+    search_value = f"%{search}%"
 
-    if search_by_value and search_by_value in CONTACT_SEARCH_FIELDS:
-        columns = CONTACT_SEARCH_FIELDS[search_by_value]
-
-        if search_by_value == "name":
-            where_clauses.append(
-                """
-                (
-                    cc.first_name LIKE %s
-                    OR cc.last_name LIKE %s
-                    OR CONCAT(COALESCE(cc.first_name, ''), ' ', COALESCE(cc.last_name, '')) LIKE %s
-                )
-                """
+    # General search if search_by is not provided
+    if not search_by_value:
+        where_clauses.append(
+            """
+            (
+                cc.first_name LIKE %s
+                OR cc.last_name LIKE %s
+                OR CONCAT(COALESCE(cc.first_name, ''), ' ', COALESCE(cc.last_name, '')) LIKE %s
+                OR cc.email LIKE %s
+                OR cc.primary_phone LIKE %s
+                OR cc.whatsappno LIKE %s
+                OR cc.alternative_phone LIKE %s
+                OR cc.alternative_emails LIKE %s
+                OR cc.address LIKE %s
+                OR cc.city LIKE %s
+                OR cc.state LIKE %s
+                OR cc.country LIKE %s
+                OR cc.zipcode LIKE %s
+                OR cc.department LIKE %s
+                OR cc.designation LIKE %s
+                OR cc.contact_type LIKE %s
+                OR cc.source LIKE %s
             )
-            params.extend([search_value, search_value, search_value])
-            return
+            """
+        )
 
-        column_conditions = []
-        for column in columns:
-            column_conditions.append(f"{column} LIKE %s")
-            params.append(search_value)
-
-        where_clauses.append("(" + " OR ".join(column_conditions) + ")")
+        params.extend([search_value] * 17)
         return
 
-    where_clauses.append(
-        """
-        (
-            cc.first_name LIKE %s
-            OR cc.last_name LIKE %s
-            OR CONCAT(COALESCE(cc.first_name, ''), ' ', COALESCE(cc.last_name, '')) LIKE %s
-            OR cc.email LIKE %s
-            OR cc.primary_phone LIKE %s
-            OR cc.whatsappno LIKE %s
-            OR cc.address LIKE %s
-            OR cc.city LIKE %s
-            OR cc.state LIKE %s
-            OR cc.country LIKE %s
-            OR cc.department LIKE %s
-            OR cc.designation LIKE %s
-            OR cc.contact_type LIKE %s
-        )
-        """
-    )
+    if search_by_value not in CONTACT_SEARCH_FIELDS:
+        return
 
-    params.extend([search_value] * 13)
+    values = split_contact_search_values(search)
+
+    if not values:
+        return
+
+    # Name search
+    if search_by_value == "name":
+        where_clauses.append(
+            """
+            (
+                cc.first_name LIKE %s
+                OR cc.last_name LIKE %s
+                OR CONCAT(COALESCE(cc.first_name, ''), ' ', COALESCE(cc.last_name, '')) LIKE %s
+            )
+            """
+        )
+        params.extend([f"%{values[0]}%", f"%{values[0]}%", f"%{values[0]}%"])
+        return
+
+    # Owner / Created By / Modified By: one or multiple user IDs
+    if search_by_value in ["owner", "created_by", "modified_by"]:
+        numeric_values = normalize_numeric_values(values)
+
+        if not numeric_values:
+            return
+
+        column = CONTACT_SEARCH_FIELDS[search_by_value][0]
+        build_contact_in_condition(column, numeric_values, where_clauses, params)
+        return
+
+    # Multi-value exact fields
+    if search_by_value in MULTI_VALUE_CONTACT_SEARCH_FIELDS:
+        column = CONTACT_SEARCH_FIELDS[search_by_value][0]
+        build_contact_in_condition(column, values, where_clauses, params)
+        return
+
+    # Single field text search
+    columns = CONTACT_SEARCH_FIELDS[search_by_value]
+
+    column_conditions = []
+
+    for column in columns:
+        column_conditions.append(f"{column} LIKE %s")
+        params.append(f"%{values[0]}%")
+
+    where_clauses.append("(" + " OR ".join(column_conditions) + ")")
 
 
 def normalize_contact_with_account(row: Dict[str, Any]) -> Dict[str, Any]:

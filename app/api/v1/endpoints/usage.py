@@ -606,13 +606,286 @@ def api_usage_page():
   -H "X-API-KEY: YOUR_API_KEY"</pre>
             </div>
 
-            <div class="card">
+                        <div class="card">
                 <h2>Contacts API</h2>
 
                 <p class="endpoint"><span class="method">GET</span>/contacts</p>
-                <p>Fetches standalone contacts with account summary and dynamic contact fields.</p>
+                <p>
+                    Fetches standalone contacts from LogiKlu CRM. This API supports general contact search,
+                    specific field search using <code>search_by</code>, account-based search, owner/created-by
+                    filtering, associated-account filtering, pagination, dynamic contact fields, and full
+                    linked account summary.
+                </p>
 
-                <h3>Query Parameters</h3>
+                <h3>Authentication</h3>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <h3>Basic Query Parameters</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Allowed / Example</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>limit</code></td>
+                            <td><code>50</code></td>
+                            <td>Number of records to return. Maximum allowed value is <code>100</code>.</td>
+                        </tr>
+                        <tr>
+                            <td><code>offset</code></td>
+                            <td><code>0</code></td>
+                            <td>Pagination offset.</td>
+                        </tr>
+                        <tr>
+                            <td><code>search</code></td>
+                            <td><code>manager</code></td>
+                            <td>Search value. Works as general search if <code>search_by</code> is not provided.</td>
+                        </tr>
+                        <tr>
+                            <td><code>search_by</code></td>
+                            <td><code>designation</code></td>
+                            <td>Specific contact field to search.</td>
+                        </tr>
+                        <tr>
+                            <td><code>account_id</code></td>
+                            <td><code>1094</code></td>
+                            <td>Fetch contacts linked with a specific account ID.</td>
+                        </tr>
+                        <tr>
+                            <td><code>account_search</code></td>
+                            <td><code>LogiKlu</code></td>
+                            <td>Search contacts by account ID, account name, or account website.</td>
+                        </tr>
+                        <tr>
+                            <td><code>associated_accounts_only</code></td>
+                            <td><code>true</code> / <code>false</code></td>
+                            <td>When true, only returns contacts that are linked to an account.</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>General Contact Search</h3>
+                <p>
+                    If <code>search_by</code> is not provided, the API searches across common contact fields.
+                </p>
+
+                <table>
+                    <tbody>
+                        <tr><td><code>name</code></td><td>First name, last name, and full name.</td></tr>
+                        <tr><td><code>email</code></td><td>Contact email.</td></tr>
+                        <tr><td><code>phone</code></td><td>Primary phone.</td></tr>
+                        <tr><td><code>whatsapp</code></td><td>WhatsApp number.</td></tr>
+                        <tr><td><code>alternative_phone</code></td><td>Alternative phone.</td></tr>
+                        <tr><td><code>alternative_emails</code></td><td>Alternative emails.</td></tr>
+                        <tr><td><code>address</code></td><td>Address.</td></tr>
+                        <tr><td><code>city</code></td><td>City.</td></tr>
+                        <tr><td><code>state</code></td><td>State.</td></tr>
+                        <tr><td><code>country</code></td><td>Country.</td></tr>
+                        <tr><td><code>zipcode</code></td><td>Zipcode.</td></tr>
+                        <tr><td><code>department</code></td><td>Department.</td></tr>
+                        <tr><td><code>designation</code></td><td>Designation / job title.</td></tr>
+                        <tr><td><code>contact_type</code></td><td>Contact type.</td></tr>
+                        <tr><td><code>source</code></td><td>Contact source.</td></tr>
+                    </tbody>
+                </table>
+
+                <h4>Example: General Search</h4>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?search=manager&limit=50&offset=0" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <h3>Specific Search Using search_by</h3>
+                <p>
+                    Use <code>search</code> with <code>search_by</code> when the client wants to search a specific
+                    contact field.
+                </p>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>search_by</th>
+                            <th>Example search value</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>name</code></td>
+                            <td><code>John</code></td>
+                            <td>Searches first name, last name, and full name.</td>
+                        </tr>
+                        <tr>
+                            <td><code>first_name</code></td>
+                            <td><code>John</code></td>
+                            <td>Searches first name.</td>
+                        </tr>
+                        <tr>
+                            <td><code>last_name</code></td>
+                            <td><code>Smith</code></td>
+                            <td>Searches last name.</td>
+                        </tr>
+                        <tr>
+                            <td><code>email</code></td>
+                            <td><code>gmail.com</code></td>
+                            <td>Searches contact email.</td>
+                        </tr>
+                        <tr>
+                            <td><code>phone</code></td>
+                            <td><code>9876</code></td>
+                            <td>Searches primary phone.</td>
+                        </tr>
+                        <tr>
+                            <td><code>whatsapp</code></td>
+                            <td><code>9876</code></td>
+                            <td>Searches WhatsApp number.</td>
+                        </tr>
+                        <tr>
+                            <td><code>alternative_phone</code></td>
+                            <td><code>9876</code></td>
+                            <td>Searches alternative phone.</td>
+                        </tr>
+                        <tr>
+                            <td><code>alternative_emails</code></td>
+                            <td><code>sales@</code></td>
+                            <td>Searches alternative emails.</td>
+                        </tr>
+                        <tr>
+                            <td><code>address</code></td>
+                            <td><code>Park Street</code></td>
+                            <td>Searches address.</td>
+                        </tr>
+                        <tr>
+                            <td><code>city</code></td>
+                            <td><code>Kolkata</code></td>
+                            <td>Searches city. Multiple comma-separated values are supported.</td>
+                        </tr>
+                        <tr>
+                            <td><code>state</code></td>
+                            <td><code>West Bengal</code></td>
+                            <td>Searches state. Multiple comma-separated values are supported.</td>
+                        </tr>
+                        <tr>
+                            <td><code>country</code></td>
+                            <td><code>India,Japan</code></td>
+                            <td>Searches country. Multiple comma-separated values are supported.</td>
+                        </tr>
+                        <tr>
+                            <td><code>zipcode</code></td>
+                            <td><code>700001</code></td>
+                            <td>Searches zipcode.</td>
+                        </tr>
+                        <tr>
+                            <td><code>department</code></td>
+                            <td><code>Marketing</code></td>
+                            <td>Searches department.</td>
+                        </tr>
+                        <tr>
+                            <td><code>designation</code></td>
+                            <td><code>Manager</code></td>
+                            <td>Searches designation / job title.</td>
+                        </tr>
+                        <tr>
+                            <td><code>contact_type</code></td>
+                            <td><code>contact,guest</code></td>
+                            <td>Searches contact type. Multiple comma-separated values are supported.</td>
+                        </tr>
+                        <tr>
+                            <td><code>source</code></td>
+                            <td><code>website,manual,csv</code></td>
+                            <td>Searches contact source. Multiple comma-separated values are supported.</td>
+                        </tr>
+                        <tr>
+                            <td><code>owner</code></td>
+                            <td><code>4,8,12</code></td>
+                            <td>Searches owner user IDs. Multiple IDs are supported.</td>
+                        </tr>
+                        <tr>
+                            <td><code>created_by</code></td>
+                            <td><code>4,8,12</code></td>
+                            <td>Searches created-by user IDs. Multiple IDs are supported.</td>
+                        </tr>
+                        <tr>
+                            <td><code>modified_by</code></td>
+                            <td><code>4,8,12</code></td>
+                            <td>Searches modified-by user IDs. Multiple IDs are supported.</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Specific Contact Search Examples</h3>
+
+                <p>Search by contact name:</p>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?search=John&search_by=name" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <p>Search by email:</p>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?search=gmail.com&search_by=email" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <p>Search by phone:</p>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?search=9876&search_by=phone" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <p>Search by designation:</p>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?search=Manager&search_by=designation" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <p>Search by country:</p>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?search=India,Japan&search_by=country" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <p>Search by owner IDs:</p>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?search=4,8,12&search_by=owner" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <p>Search by created-by user IDs:</p>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?search=4,8,12&search_by=created_by" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <h3>Account-Based Contact Search</h3>
+
+                <p>Contacts under one account ID:</p>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?account_id=1094" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <p>Search contacts by account name, account website, or account ID:</p>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?account_search=LogiKlu" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <p>Only contacts associated with accounts:</p>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?associated_accounts_only=true" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <h3>Combined Contact Search Examples</h3>
+
+                <p>Associated contacts under an account search with designation:</p>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?associated_accounts_only=true&account_search=LogiKlu&search=Manager&search_by=designation" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <p>Contacts in selected countries owned by selected users:</p>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?search=4,8&search_by=owner&associated_accounts_only=true" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+            </div>
+
+                        <div class="card">
+                <h2>Contact Detail API</h2>
+
+                <p class="endpoint"><span class="method">GET</span>/contacts/{contact_id}</p>
+                <p>
+                    Fetches one contact by contact ID. The response includes the contact's main information,
+                    dynamic fields from <code>lk_central_contacts_details</code>, and the linked account summary
+                    if the contact is associated with an account.
+                </p>
+
+                <h3>Authentication</h3>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts/CONTACT_ID" \\
+  -H "X-API-KEY: YOUR_API_KEY"</pre>
+
+                <h3>Path Parameter</h3>
                 <table>
                     <thead>
                         <tr>
@@ -623,147 +896,112 @@ def api_usage_page():
                     </thead>
                     <tbody>
                         <tr>
-                            <td><code>limit</code></td>
-                            <td><code>50</code></td>
-                            <td>Number of records to return. Max 100.</td>
-                        </tr>
-                        <tr>
-                            <td><code>offset</code></td>
-                            <td><code>0</code></td>
-                            <td>Pagination offset.</td>
-                        </tr>
-                        <tr>
-                            <td><code>account_id</code></td>
-                            <td><code>1094</code></td>
-                            <td>Fetch contacts under a specific account ID.</td>
-                        </tr>
-                        <tr>
-                            <td><code>account_search</code></td>
-                            <td><code>LogiKlu</code></td>
-                            <td>Search contacts by account ID, account name, or account website.</td>
-                        </tr>
-                        <tr>
-                            <td><code>associated_accounts_only</code></td>
-                            <td><code>true</code></td>
-                            <td>Only return contacts associated with accounts.</td>
-                        </tr>
-                        <tr>
-                            <td><code>search</code></td>
-                            <td><code>manager</code></td>
-                            <td>Search value for contact fields.</td>
-                        </tr>
-                        <tr>
-                            <td><code>search_by</code></td>
-                            <td><code>designation</code></td>
-                            <td>Allowed values: <code>name</code>, <code>email</code>, <code>phone</code>, <code>whatsapp</code>, <code>address</code>, <code>city</code>, <code>state</code>, <code>country</code>, <code>department</code>, <code>designation</code>, <code>contact_type</code>.</td>
+                            <td><code>contact_id</code></td>
+                            <td><code>101</code></td>
+                            <td>Unique contact ID from <code>lk_central_contacts.contact_id</code>.</td>
                         </tr>
                     </tbody>
                 </table>
 
-                <h3>Examples</h3>
-
-                <p>All contacts:</p>
-                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?limit=50&offset=0" \\
+                <h3>Example</h3>
+                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts/101" \\
   -H "X-API-KEY: YOUR_API_KEY"</pre>
 
-                <p>Contacts under one account:</p>
-                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?account_id=1094" \\
-  -H "X-API-KEY: YOUR_API_KEY"</pre>
-
-                <p>Search by contact name:</p>
-                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?search=John&search_by=name" \\
-  -H "X-API-KEY: YOUR_API_KEY"</pre>
-
-                <p>Only contacts associated with accounts:</p>
-                <pre>curl -X GET "https://api.logiklu.com/api/v1/contacts?associated_accounts_only=true" \\
-  -H "X-API-KEY: YOUR_API_KEY"</pre>
-            </div>
-
-            <div class="card">
-                <h2>Dynamic Filter Operators</h2>
-
+                <h3>Response Includes</h3>
                 <table>
                     <thead>
                         <tr>
-                            <th>Operator</th>
-                            <th>Meaning</th>
-                            <th>Example</th>
+                            <th>Section</th>
+                            <th>Description</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td><code>eq</code></td>
-                            <td>Exact match</td>
-                            <td><code>{"field":"country","operator":"eq","value":"Japan"}</code></td>
+                            <td><code>contact</code></td>
+                            <td>Main contact details such as name, email, phone, WhatsApp, designation, department, address, source, owner, created by, and modified by.</td>
                         </tr>
                         <tr>
-                            <td><code>neq</code></td>
-                            <td>Not equal</td>
-                            <td><code>{"field":"source","operator":"neq","value":"csv"}</code></td>
+                            <td><code>dynamic_fields</code></td>
+                            <td>Additional contact fields from <code>lk_central_contacts_details</code>.</td>
                         </tr>
                         <tr>
-                            <td><code>like</code></td>
-                            <td>Contains</td>
-                            <td><code>{"field":"lead_name","operator":"like","value":"Photonics"}</code></td>
-                        </tr>
-                        <tr>
-                            <td><code>starts_with</code></td>
-                            <td>Starts with</td>
-                            <td><code>{"field":"lead_name","operator":"starts_with","value":"Ham"}</code></td>
-                        </tr>
-                        <tr>
-                            <td><code>ends_with</code></td>
-                            <td>Ends with</td>
-                            <td><code>{"field":"website","operator":"ends_with","value":".com"}</code></td>
-                        </tr>
-                        <tr>
-                            <td><code>in</code></td>
-                            <td>Multiple values</td>
-                            <td><code>{"field":"country","operator":"in","value":["India","Japan"]}</code></td>
-                        </tr>
-                        <tr>
-                            <td><code>from</code></td>
-                            <td>Greater than or equal</td>
-                            <td><code>{"field":"created_date","operator":"from","value":"2026-01-01"}</code></td>
-                        </tr>
-                        <tr>
-                            <td><code>to</code></td>
-                            <td>Less than or equal</td>
-                            <td><code>{"field":"created_date","operator":"to","value":"2026-05-31"}</code></td>
+                            <td><code>account</code></td>
+                            <td>Full linked account summary from <code>lk_lead_master</code>, if the contact is associated with an account.</td>
                         </tr>
                     </tbody>
                 </table>
-            </div>
 
-            <div class="card">
-                <h2>Standard Response Format</h2>
-
-                <h3>Success</h3>
+                <h3>Sample Response Structure</h3>
                 <pre>{
   "status": "success",
-  "message": "Accounts fetched successfully",
+  "message": "Contact detail fetched successfully",
   "meta": {
     "generated_at": "2026-05-27T10:00:00+00:00",
-    "limit": 20,
-    "offset": 0,
-    "search": null,
-    "record_count": 20,
-    "total_records": 357
+    "contact_id": 101
   },
-  "data": {}
+  "data": {
+    "contact": {
+      "contact_id": 101,
+      "contact_type": "contact",
+      "name": "John Smith",
+      "email": "john@example.com",
+      "phone": "+91 1234567890",
+      "whatsapp": "+91 9876543210",
+      "alternative_phone": "",
+      "alternative_emails": "",
+      "social_network": {
+        "Linkedin": "https://www.linkedin.com/in/example"
+      },
+      "address": "",
+      "city": "Kolkata",
+      "state": "West Bengal",
+      "country": "India",
+      "zipcode": "700001",
+      "avatar": "",
+      "department": "Sales",
+      "designation": "Sales Manager",
+      "source": "Website Visitor",
+      "source_details": {},
+      "owner": {
+        "name": "Owner Name",
+        "email": "owner@example.com"
+      },
+      "created_by": {
+        "name": "Creator Name",
+        "email": "creator@example.com"
+      },
+      "created_date": "2026-05-20 10:30:00",
+      "modified_by": {
+        "name": "Modifier Name",
+        "email": "modifier@example.com"
+      },
+      "modified_date": "2026-05-21 12:15:00",
+      "notes": "",
+      "dynamic_fields": {},
+      "account": {
+        "account_id": 1094,
+        "account_name": "LogiKlu",
+        "lead_category": "Lead",
+        "website": "logiklu.com"
+      }
+    }
+  }
 }</pre>
 
-                <h3>Error</h3>
+                <h3>Error Example</h3>
                 <pre>{
   "status": "error",
-  "message": "Missing API key",
-  "error_code": "AUTH_API_KEY_MISSING",
-  "data": null
+  "message": "Contact not found",
+  "error_code": "CONTACT_NOT_FOUND",
+  "data": {
+    "contact_id": 101,
+    "timestamp": "2026-05-27T10:00:00+00:00"
+  }
 }</pre>
             </div>
 
             <div class="footer">
-                LogiKlu Agent API &copy; Usage Guide
+                LogiKlu API &copy; Usage Guide
             </div>
         </div>
     </body>
