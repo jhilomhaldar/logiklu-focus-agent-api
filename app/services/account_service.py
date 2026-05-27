@@ -396,7 +396,7 @@ def normalize_account_row(row: Dict[str, Any]) -> Dict[str, Any]:
             active_contact_count,
         ),
         "contact_count": active_contact_count,
-        "lead_type": row.get("lead_type"),
+        "lead_temparature": row.get("lead_type"),
         "lead_status": row.get("lead_status_name"),
         "status_change_date": convert_datetime_to_utc(
             row.get("status_change_date"),
