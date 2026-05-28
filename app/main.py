@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api.v1.router import api_router
 from app.core.request_logger import api_request_logger_middleware
+from fastapi.staticfiles import StaticFiles
 
 
 app = FastAPI(
@@ -11,6 +12,8 @@ app = FastAPI(
     version=settings.API_VERSION,
     description="External Agentic AI Data API for LogiKlu Focus.",
 )
+
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.add_middleware(
     CORSMiddleware,

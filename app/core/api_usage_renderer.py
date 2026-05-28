@@ -11,26 +11,25 @@ def esc(value: Any) -> str:
     return html.escape(str(value))
 
 
-def json_pretty(value: Any) -> str:
-    return html.escape(json.dumps(value, indent=2, default=str))
-
-
 def method_class(method: str) -> str:
     method_value = str(method or "").upper()
 
     if method_value == "GET":
-        return "method-get"
+        return "m-get"
 
     if method_value == "POST":
-        return "method-post"
+        return "m-post"
+
+    if method_value == "PUT":
+        return "m-put"
 
     if method_value == "PATCH":
-        return "method-patch"
+        return "m-patch"
 
     if method_value == "DELETE":
-        return "method-delete"
+        return "m-delete"
 
-    return "method-default"
+    return "m-default"
 
 
 def build_url(base_url: str, path: str, query: Dict[str, Any]) -> str:
@@ -45,70 +44,15 @@ def build_url(base_url: str, path: str, query: Dict[str, Any]) -> str:
     return f"{clean_base}{clean_path}?{urlencode(query)}"
 
 
-def render_table(headers: List[str], rows: List[List[Any]]) -> str:
-    html_rows = ""
-
-    for row in rows:
-        html_rows += "<tr>"
-        for cell in row:
-            html_rows += f"<td>{cell}</td>"
-        html_rows += "</tr>"
-
-    html_headers = "".join([f"<th>{esc(header)}</th>" for header in headers])
-
+def render_code_block(code: str, language_label: str = "Code") -> str:
     return f"""
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>{html_headers}</tr>
-            </thead>
-            <tbody>
-                {html_rows}
-            </tbody>
-        </table>
+    <div class="code-wrap">
+        <div class="code-toolbar">
+            <span class="code-lang">{esc(language_label)}</span>
+            <button class="copy-btn" type="button" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code>{esc(code)}</code></pre>
     </div>
-    """
-
-
-def render_parameters(parameters: List[Dict[str, Any]]) -> str:
-    if not parameters:
-        return ""
-
-    rows = []
-
-    for param in parameters:
-        rows.append([
-            f"<code>{esc(param.get('name'))}</code>",
-            esc(param.get("required")),
-            f"<code>{esc(param.get('example'))}</code>",
-            esc(param.get("description")),
-        ])
-
-    return f"""
-    <h4>Parameters</h4>
-    {render_table(["Name", "Required", "Example", "Description"], rows)}
-    """
-
-
-def render_search_by_options(options: List[Dict[str, Any]]) -> str:
-    if not options:
-        return ""
-
-    rows = []
-
-    for item in options:
-        rows.append([
-            f"<code>{esc(item.get('name'))}</code>",
-            f"<code>{esc(item.get('example'))}</code>",
-            esc(item.get("description")),
-        ])
-
-    return f"""
-    <h4>Specific Search Options</h4>
-    <p class="help-text">
-        Use <code>search</code> with <code>search_by</code> when you want to search one selected field only.
-    </p>
-    {render_table(["search_by", "Example Value", "Description"], rows)}
     """
 
 
@@ -257,6 +201,7 @@ const response = await fetch(url, {{
 const data = await response.json();
 console.log(data);'''
 
+
 def generate_javascript(method: str, url: str, body: Any = None) -> str:
     method = str(method or "GET").upper()
 
@@ -402,15 +347,10 @@ class Program
         using var client = new HttpClient();
         client.DefaultRequestHeaders.Add("X-API-KEY", apiKey);
 
-        var content = new StringContent(payload, Encoding.UTF8, "application/json");
+        var request = new HttpRequestMessage(new HttpMethod("{method}"), url);
+        request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
 
-        HttpResponseMessage response = await client.SendAsync(
-            new HttpRequestMessage(new HttpMethod("{method}"), url)
-            {{
-                Content = content
-            }}
-        );
-
+        HttpResponseMessage response = await client.SendAsync(request);
         string responseBody = await response.Content.ReadAsStringAsync();
 
         Console.WriteLine(responseBody);
@@ -439,6 +379,7 @@ end
 puts JSON.pretty_generate(JSON.parse(response.body))'''
 
     body_json = json.dumps(body or {}, indent=2)
+    ruby_method = method.capitalize
 
     return f'''require "net/http"
 require "json"
@@ -449,7 +390,7 @@ url = URI("{url}")
 
 payload = {body_json}
 
-request = Net::HTTP::{method.capitalize}.new(url)
+request = Net::HTTP::{ruby_method}.new(url)
 request["X-API-KEY"] = api_key
 request["Content-Type"] = "application/json"
 request.body = payload.to_json
@@ -540,11 +481,7 @@ func main() {{
 }}'''
 
 
-def generate_code_examples(
-    method: str,
-    url: str,
-    body: Any = None,
-) -> Dict[str, str]:
+def generate_code_examples(method: str, url: str, body: Any = None) -> Dict[str, str]:
     return {
         "curl": generate_curl(method, url, body),
         "php": generate_php(method, url, body),
@@ -558,10 +495,7 @@ def generate_code_examples(
     }
 
 
-def render_code_tabs(
-    unique_id: str,
-    code_examples: Dict[str, str],
-) -> str:
+def render_language_tabs(unique_id: str, code_examples: Dict[str, str]) -> str:
     labels = {
         "curl": "cURL",
         "php": "PHP",
@@ -576,7 +510,6 @@ def render_code_tabs(
 
     buttons = ""
     panes = ""
-
     first = True
 
     for key, label in labels.items():
@@ -588,42 +521,130 @@ def render_code_tabs(
         active_class = "active" if first else ""
 
         buttons += f"""
-        <button type="button" class="tab-btn {active_class}" data-target="{esc(unique_id)}-{esc(key)}">
+        <button class="tab-btn lang-tab {active_class}" type="button" onclick="switchLangTab(this, '{esc(unique_id)}-{esc(key)}')">
             {esc(label)}
         </button>
         """
 
         panes += f"""
-        <pre class="code-pane {active_class}" id="{esc(unique_id)}-{esc(key)}"><code>{esc(code)}</code></pre>
+        <div class="lang-content {active_class}" id="{esc(unique_id)}-{esc(key)}">
+            {render_code_block(code, label)}
+        </div>
         """
 
         first = False
 
     return f"""
-    <div class="code-tabs">
-        <div class="tab-buttons">
+    <div class="language-tabs">
+        <div class="tabs small-tabs">
             {buttons}
         </div>
-        <div class="tab-content">
-            {panes}
-        </div>
+        {panes}
     </div>
     """
 
 
-def render_examples(
-    examples: List[Dict[str, Any]],
-    method: str,
-    base_url: str,
-    endpoint_id: str,
-) -> str:
-    if not examples:
+def render_parameters(endpoint: Dict[str, Any]) -> str:
+    parameters = endpoint.get("parameters", [])
+
+    if not parameters:
+        return """
+        <div class="info-box info-note">
+            <span class="info-icon">ℹ</span>
+            <div>No parameters are required for this endpoint.</div>
+        </div>
+        """
+
+    rows = ""
+
+    for param in parameters:
+        required_class = "req" if str(param.get("required", "")).lower() == "yes" else "opt"
+        required_text = "required" if required_class == "req" else "optional"
+        param_type = param.get("type") or "string"
+
+        rows += f"""
+        <tr>
+            <td><span class="param-name">{esc(param.get("name"))}</span></td>
+            <td><span class="param-type">{esc(param_type)}</span></td>
+            <td><span class="param-req {required_class}">{esc(required_text)}</span></td>
+            <td><code>{esc(param.get("example"))}</code></td>
+            <td class="param-desc">{esc(param.get("description"))}</td>
+        </tr>
+        """
+
+    return f"""
+    <table class="params-table">
+        <thead>
+            <tr>
+                <th>Parameter</th>
+                <th>Type</th>
+                <th>Required</th>
+                <th>Example</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {rows}
+        </tbody>
+    </table>
+    """
+
+
+def render_search_by_options(endpoint: Dict[str, Any]) -> str:
+    options = endpoint.get("search_by_options", [])
+
+    if not options:
         return ""
 
-    example_html = "<h4>Examples</h4>"
+    rows = ""
+
+    for item in options:
+        rows += f"""
+        <tr>
+            <td><span class="param-name">{esc(item.get("name"))}</span></td>
+            <td><code>{esc(item.get("example"))}</code></td>
+            <td class="param-desc">{esc(item.get("description"))}</td>
+        </tr>
+        """
+
+    return f"""
+    <h4 class="sub-title">Specific Search Options</h4>
+    <p class="section-desc small-desc">
+        Use <code>search</code> with <code>search_by</code> when you want to search one selected field only.
+    </p>
+
+    <table class="params-table">
+        <thead>
+            <tr>
+                <th>search_by</th>
+                <th>Example Value</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {rows}
+        </tbody>
+    </table>
+    """
+
+
+def render_examples(endpoint: Dict[str, Any], base_url: str) -> str:
+    examples = endpoint.get("examples", [])
+    method = endpoint.get("method", "GET")
+
+    if not examples:
+        default_url = build_url(base_url, endpoint.get("path", ""), {})
+        code_examples = generate_code_examples(method=method, url=default_url, body=endpoint.get("body"))
+
+        return render_language_tabs(
+            f"{endpoint.get('id')}-default-example",
+            code_examples
+        )
+
+    output = ""
 
     for index, example in enumerate(examples):
-        path = example.get("path", "")
+        path = example.get("path", endpoint.get("path", ""))
         query = example.get("query", {})
         body = example.get("body")
         url = build_url(base_url, path, query)
@@ -634,619 +655,1528 @@ def render_examples(
             body=body,
         )
 
-        unique_id = f"{endpoint_id}-example-{index}"
+        unique_id = f"{endpoint.get('id')}-example-{index}"
 
-        example_html += f"""
-        <div class="example-box">
+        output += f"""
+        <div class="example-block">
             <div class="example-title">{esc(example.get("title"))}</div>
-            <p>{esc(example.get("description"))}</p>
-            {render_code_tabs(unique_id, code_examples)}
+            <p class="example-desc">{esc(example.get("description"))}</p>
+            {render_language_tabs(unique_id, code_examples)}
         </div>
         """
 
-    return example_html
+    return output
 
 
-def render_endpoint(section_id: str, endpoint: Dict[str, Any], base_url: str) -> str:
+def render_response(endpoint: Dict[str, Any]) -> str:
+    response_example = endpoint.get("response_example")
+
+    if not response_example:
+        response_example = {
+            "status": "success",
+            "message": f"{endpoint.get('title')} request successful",
+            "meta": {},
+            "data": {}
+        }
+
+    return render_code_block(
+        json.dumps(response_example, indent=2, default=str),
+        "JSON · Response"
+    )
+
+
+def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
     method = str(endpoint.get("method") or "GET").upper()
-    endpoint_id = endpoint.get("id")
-    endpoint_anchor = f"{section_id}-{endpoint_id}"
+    path = endpoint.get("path", "")
+    parameters = endpoint.get("parameters", [])
+
+    input_rows = ""
+
+    for param in parameters:
+        name = param.get("name")
+        example = param.get("example") or ""
+        required = str(param.get("required") or "No").lower() == "yes"
+
+        input_rows += f"""
+        <div class="try-field">
+            <label>
+                <span>{esc(name)}</span>
+                <small>{'Required' if required else 'Optional'}</small>
+            </label>
+            <input
+                type="text"
+                data-param-name="{esc(name)}"
+                data-param-required="{'yes' if required else 'no'}"
+                placeholder="{esc(example)}"
+            />
+            <p>{esc(param.get("description"))}</p>
+        </div>
+        """
+
+    body_box = ""
+
+    if method != "GET":
+        default_body = json.dumps(endpoint.get("body", {}), indent=2)
+
+        body_box = f"""
+        <div class="try-field">
+            <label>
+                <span>JSON Body</span>
+                <small>For POST/PATCH/PUT</small>
+            </label>
+            <textarea data-body-json rows="8">{esc(default_body)}</textarea>
+        </div>
+        """
 
     return f"""
-    <article class="endpoint-card" id="{esc(endpoint_anchor)}">
-        <div class="endpoint-head">
-            <span class="method-badge {method_class(method)}">{esc(method)}</span>
+    <div class="tryout-box"
+         data-method="{esc(method)}"
+         data-path="{esc(path)}"
+         data-base-url="{esc(base_url)}">
+
+        <div class="info-box info-note">
+            <span class="info-icon">ℹ</span>
+            <div>
+                Enter your API key and parameters, then click <strong>Send Request</strong>.
+                The real API response will appear below.
+            </div>
+        </div>
+
+        <div class="try-field">
+            <label>
+                <span>API Key</span>
+                <small>Required</small>
+            </label>
+            <input type="password" data-api-key placeholder="YOUR_API_KEY" />
+        </div>
+
+        <div class="try-grid">
+            {input_rows}
+        </div>
+
+        {body_box}
+
+        <button type="button" class="try-btn" onclick="sendTryOutRequest(this)">
+            Send Request
+        </button>
+
+        <div class="try-url">
+            <span>Request URL</span>
+            <code data-request-url>{esc(base_url)}{esc(path)}</code>
+        </div>
+
+        <div class="code-wrap try-response-wrap">
+            <div class="code-toolbar">
+                <span class="code-lang">Live Response</span>
+                <button class="copy-btn" type="button" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre><code data-try-response>Click "Send Request" to see response here.</code></pre>
+        </div>
+    </div>
+    """
+
+
+def render_endpoint_card(section_id: str, endpoint: Dict[str, Any], base_url: str, open_default: bool = False) -> str:
+    endpoint_id = f"{section_id}-{endpoint.get('id')}"
+    method = str(endpoint.get("method") or "GET").upper()
+    open_class = "open" if open_default else ""
+
+    return f"""
+    <div class="endpoint-card {open_class}" id="{esc(endpoint_id)}">
+        <div class="endpoint-header" onclick="toggleCard(this)">
+            <span class="method-tag {method_class(method)}">{esc(method)}</span>
             <span class="endpoint-path">{esc(endpoint.get("path"))}</span>
+            <span class="endpoint-desc">{esc(endpoint.get("title"))}</span>
+            <span class="endpoint-toggle">▾</span>
         </div>
 
-        <h3>{esc(endpoint.get("title"))}</h3>
-        <p class="purpose">{esc(endpoint.get("purpose"))}</p>
+        <div class="endpoint-body">
+            <div class="info-box info-tip">
+                <span class="info-icon">✦</span>
+                <div>{esc(endpoint.get("purpose"))}</div>
+            </div>
 
-        <div class="mini-grid">
-            <div>
-                <span class="mini-label">Method</span>
-                <strong>{esc(method)}</strong>
+            <div class="tabs endpoint-tabs">
+                <button class="tab-btn active" type="button" onclick="switchEndpointTab(this, '{esc(endpoint_id)}-request')">Request</button>
+                <button class="tab-btn" type="button" onclick="switchEndpointTab(this, '{esc(endpoint_id)}-params')">{esc(endpoint.get("request_type", "Parameters"))}</button>
+                <button class="tab-btn" type="button" onclick="switchEndpointTab(this, '{esc(endpoint_id)}-response')">Response</button>
+                <button class="tab-btn" type="button" onclick="switchEndpointTab(this, '{esc(endpoint_id)}-tryout')">Try Out</button>
             </div>
-            <div>
-                <span class="mini-label">Request Type</span>
-                <strong>{esc(endpoint.get("request_type"))}</strong>
+
+            <div id="{esc(endpoint_id)}-request" class="endpoint-tab-content active">
+                {render_examples(endpoint, base_url)}
             </div>
-            <div>
-                <span class="mini-label">Authentication</span>
-                <strong>Required</strong>
+
+            <div id="{esc(endpoint_id)}-params" class="endpoint-tab-content">
+                {render_parameters(endpoint)}
+                {render_search_by_options(endpoint)}
+            </div>
+
+            <div id="{esc(endpoint_id)}-response" class="endpoint-tab-content">
+                {render_response(endpoint)}
+            </div>
+
+            <div id="{esc(endpoint_id)}-tryout" class="endpoint-tab-content">
+                {render_try_out(endpoint, base_url)}
             </div>
         </div>
-
-        {render_parameters(endpoint.get("parameters", []))}
-        {render_search_by_options(endpoint.get("search_by_options", []))}
-        {render_examples(endpoint.get("examples", []), method, base_url, endpoint_anchor)}
-    </article>
+    </div>
     """
 
 
 def render_sidebar(data: Dict[str, Any]) -> str:
-    section_links = ""
+    section_html = ""
 
     for section in data.get("sections", []):
-        section_links += f"""
-        <div class="side-section">
-            <a class="side-main" href="#{esc(section.get("id"))}">{esc(section.get("title"))}</a>
-        """
+        section_id = section.get("id")
+
+        endpoint_links = ""
 
         for endpoint in section.get("endpoints", []):
-            anchor = f"{section.get('id')}-{endpoint.get('id')}"
-            section_links += f"""
-            <a class="side-sub" href="#{esc(anchor)}">{esc(endpoint.get("title"))}</a>
+            endpoint_anchor = f"{section_id}-{endpoint.get('id')}"
+            method = str(endpoint.get("method") or "GET").upper()
+
+            endpoint_links += f"""
+            <a class="nav-item child-nav" onclick="scrollToSection('{esc(endpoint_anchor)}')">
+                <span class="nav-method {method_class(method)}">{esc(method)}</span>{esc(endpoint.get("path"))}
+            </a>
             """
 
-        section_links += "</div>"
-
-    return f"""
-    <aside class="sidebar">
-        <div class="brand">
-            <div class="brand-mark">LK</div>
-            <div>
-                <strong>LogiKlu API</strong>
-                <span>Usage Guide</span>
+        section_html += f"""
+        <div class="nav-group api-nav-group open">
+            <button class="nav-group-toggle" type="button" onclick="toggleMenuGroup(this)">
+                <span>{esc(section.get("title"))}</span>
+                <span class="menu-arrow">▾</span>
+            </button>
+            <div class="nav-children">
+                <a class="nav-item section-nav" onclick="scrollToSection('{esc(section_id)}')">Overview</a>
+                {endpoint_links}
             </div>
         </div>
+        """
 
-        <nav>
-            <a class="side-main" href="#getting-started">Getting Started</a>
-            <a class="side-main" href="#authentication">Authentication</a>
-            <a class="side-main" href="#response-format">Response Format</a>
-            {section_links}
-            <a class="side-main" href="#errors">Error Codes</a>
-        </nav>
-    </aside>
+    return f"""
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <a class="logo" onclick="scrollToSection('overview')">
+                <img src="/static/images/logiklu-logo.png" alt="LogiKlu" />
+            </a>
+            <div class="sidebar-version">Agent API · REST</div>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group-label">Getting Started</div>
+            <a class="nav-item active" onclick="scrollToSection('overview')">Overview</a>
+            <a class="nav-item" onclick="scrollToSection('authentication')">Authentication</a>
+            <a class="nav-item" onclick="scrollToSection('response-format')">Response Format</a>
+            <a class="nav-item" onclick="scrollToSection('quick-start')">Quick Start</a>
+            <a class="nav-item" onclick="scrollToSection('errors')">Error Handling</a>
+        </div>
+
+        {section_html}
+    </nav>
     """
+
+
+def render_sections(data: Dict[str, Any]) -> str:
+    base_url = data.get("base_url", "")
+    output = ""
+    section_number = 4
+
+    for section_index, section in enumerate(data.get("sections", [])):
+        endpoint_cards = ""
+
+        for endpoint_index, endpoint in enumerate(section.get("endpoints", [])):
+            endpoint_cards += render_endpoint_card(
+                section_id=section.get("id"),
+                endpoint=endpoint,
+                base_url=base_url,
+                open_default=(section_index == 0 and endpoint_index == 0)
+            )
+
+        output += f"""
+        <div class="section" id="{esc(section.get("id"))}">
+            <div class="section-header">
+                <span class="section-num">{section_number:02d}</span>
+                <h2 class="section-title">{esc(section.get("title"))}</h2>
+            </div>
+            <p class="section-desc">{esc(section.get("description"))}</p>
+            {endpoint_cards}
+        </div>
+        """
+
+        section_number += 1
+
+    return output
+
+
+def render_error_codes(data: Dict[str, Any]) -> str:
+    rows = ""
+
+    for item in data.get("errors", []):
+        rows += f"""
+        <div class="response-item">
+            <span class="status-code s4">{esc(item.get("code"))}</span>
+            <div>
+                <strong>{esc(item.get("meaning"))}</strong><br>
+                <span>{esc(item.get("fix"))}</span>
+            </div>
+        </div>
+        """
+
+    return rows
 
 
 def render_usage_page(data: Dict[str, Any]) -> str:
     base_url = data.get("base_url", "")
-
-    sections_html = ""
-
-    for section in data.get("sections", []):
-        endpoints_html = ""
-
-        for endpoint in section.get("endpoints", []):
-            endpoints_html += render_endpoint(
-                section_id=section.get("id"),
-                endpoint=endpoint,
-                base_url=base_url,
-            )
-
-        sections_html += f"""
-        <section class="content-section" id="{esc(section.get("id"))}">
-            <div class="section-title">
-                <span>Section</span>
-                <h2>{esc(section.get("title"))}</h2>
-                <p>{esc(section.get("description"))}</p>
-            </div>
-            {endpoints_html}
-        </section>
-        """
-
-    auth_headers = data.get("auth", {}).get("headers", [])
-
-    auth_rows = [
-        [
-            f"<code>{esc(item.get('name'))}</code>",
-            esc(item.get("required")),
-            esc(item.get("description")),
-        ]
-        for item in auth_headers
-    ]
-
-    error_rows = [
-        [
-            f"<code>{esc(item.get('code'))}</code>",
-            esc(item.get("meaning")),
-            esc(item.get("fix")),
-        ]
-        for item in data.get("errors", [])
-    ]
-
     first_example_url = build_url(base_url, "/accounts", {"limit": 20, "offset": 0})
     first_example_code = generate_code_examples("GET", first_example_url)
 
     template = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>{{TITLE}}</title>
-
-        <style>
-            :root {
-                --blue: #0b5fa5;
-                --blue-dark: #084a80;
-                --bg: #f4f7fb;
-                --text: #1f2937;
-                --muted: #667085;
-                --line: #e4e7ec;
-                --card: #ffffff;
-                --green: #17803d;
-                --post: #2563eb;
-                --patch: #d97706;
-                --delete: #dc2626;
-            }
-
-            * {
-                box-sizing: border-box;
-            }
-
-            html {
-                scroll-behavior: smooth;
-            }
-
-            body {
-                margin: 0;
-                font-family: Arial, Helvetica, sans-serif;
-                background: var(--bg);
-                color: var(--text);
-                line-height: 1.6;
-            }
-
-            a {
-                color: inherit;
-                text-decoration: none;
-            }
-
-            .layout {
-                display: flex;
-                min-height: 100vh;
-            }
-
-            .sidebar {
-                width: 290px;
-                background: #ffffff;
-                border-right: 1px solid var(--line);
-                padding: 22px 18px;
-                position: sticky;
-                top: 0;
-                height: 100vh;
-                overflow-y: auto;
-            }
-
-            .brand {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                padding-bottom: 18px;
-                margin-bottom: 18px;
-                border-bottom: 1px solid var(--line);
-            }
-
-            .brand-mark {
-                width: 42px;
-                height: 42px;
-                border-radius: 12px;
-                background: var(--blue);
-                color: white;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-weight: bold;
-            }
-
-            .brand span {
-                display: block;
-                color: var(--muted);
-                font-size: 13px;
-            }
-
-            .side-main {
-                display: block;
-                padding: 10px 12px;
-                border-radius: 9px;
-                color: #344054;
-                font-weight: 700;
-                margin-top: 4px;
-            }
-
-            .side-main:hover {
-                background: #eef6ff;
-                color: var(--blue);
-            }
-
-            .side-sub {
-                display: block;
-                padding: 7px 12px 7px 28px;
-                font-size: 14px;
-                color: var(--muted);
-                border-radius: 8px;
-            }
-
-            .side-sub:hover {
-                background: #f2f4f7;
-                color: var(--blue);
-            }
-
-            .main {
-                flex: 1;
-                padding: 32px;
-                max-width: 1220px;
-            }
-
-            .hero {
-                background: linear-gradient(135deg, var(--blue), var(--blue-dark));
-                color: #ffffff;
-                border-radius: 20px;
-                padding: 34px;
-                margin-bottom: 26px;
-                box-shadow: 0 12px 28px rgba(11, 95, 165, 0.22);
-            }
-
-            .hero h1 {
-                margin: 0 0 8px;
-                font-size: 34px;
-            }
-
-            .hero p {
-                margin: 0 0 20px;
-                opacity: 0.95;
-                font-size: 16px;
-            }
-
-            .base-url {
-                display: inline-block;
-                background: rgba(255,255,255,0.15);
-                padding: 12px 16px;
-                border-radius: 12px;
-                font-family: Consolas, Monaco, monospace;
-                word-break: break-all;
-            }
-
-            .content-section {
-                margin-bottom: 30px;
-            }
-
-            .section-title {
-                margin: 30px 0 16px;
-            }
-
-            .section-title span {
-                color: var(--blue);
-                font-weight: 700;
-                font-size: 13px;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-            }
-
-            .section-title h2 {
-                margin: 4px 0;
-                font-size: 27px;
-            }
-
-            .section-title p {
-                color: var(--muted);
-                margin: 0;
-            }
-
-            .info-card,
-            .endpoint-card {
-                background: var(--card);
-                border: 1px solid var(--line);
-                border-radius: 18px;
-                padding: 24px;
-                margin-bottom: 22px;
-                box-shadow: 0 6px 18px rgba(16, 24, 40, 0.06);
-            }
-
-            .info-card h2,
-            .endpoint-card h3 {
-                margin-top: 0;
-            }
-
-            .endpoint-head {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                margin-bottom: 14px;
-            }
-
-            .method-badge {
-                color: white;
-                padding: 5px 10px;
-                border-radius: 999px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-
-            .method-get {
-                background: var(--green);
-            }
-
-            .method-post {
-                background: var(--post);
-            }
-
-            .method-patch {
-                background: var(--patch);
-            }
-
-            .method-delete {
-                background: var(--delete);
-            }
-
-            .method-default {
-                background: #475467;
-            }
-
-            .endpoint-path {
-                font-family: Consolas, Monaco, monospace;
-                color: #111827;
-                background: #f2f4f7;
-                padding: 6px 9px;
-                border-radius: 8px;
-                font-weight: 700;
-            }
-
-            .purpose,
-            .help-text {
-                color: var(--muted);
-            }
-
-            .mini-grid {
-                display: grid;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
-                gap: 12px;
-                margin: 16px 0 22px;
-            }
-
-            .mini-grid div {
-                background: #f8fafc;
-                border: 1px solid var(--line);
-                padding: 12px;
-                border-radius: 12px;
-            }
-
-            .mini-label {
-                display: block;
-                color: var(--muted);
-                font-size: 12px;
-                margin-bottom: 3px;
-            }
-
-            .table-wrap {
-                overflow-x: auto;
-                margin: 12px 0 22px;
-            }
-
-            table {
-                width: 100%;
-                border-collapse: collapse;
-                background: white;
-            }
-
-            th {
-                background: #eef6ff;
-                color: #0b5fa5;
-                text-align: left;
-                padding: 11px;
-                border: 1px solid #d8e6f5;
-                font-size: 14px;
-            }
-
-            td {
-                padding: 11px;
-                border: 1px solid var(--line);
-                vertical-align: top;
-                font-size: 14px;
-            }
-
-            code {
-                background: #f2f4f7;
-                color: #0b5fa5;
-                padding: 2px 5px;
-                border-radius: 5px;
-                font-family: Consolas, Monaco, monospace;
-            }
-
-            pre {
-                background: #101828;
-                color: #f9fafb;
-                padding: 16px;
-                border-radius: 12px;
-                overflow-x: auto;
-                white-space: pre-wrap;
-                word-break: break-word;
-                margin: 0;
-            }
-
-            pre code {
-                background: transparent;
-                color: inherit;
-                padding: 0;
-            }
-
-            .example-box {
-                border: 1px solid var(--line);
-                border-radius: 14px;
-                padding: 16px;
-                margin: 12px 0;
-                background: #fcfcfd;
-            }
-
-            .example-title {
-                font-weight: 700;
-                color: #111827;
-                margin-bottom: 4px;
-            }
-
-            .code-tabs {
-                margin-top: 12px;
-            }
-
-            .tab-buttons {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 8px;
-                margin-bottom: 8px;
-            }
-
-            .tab-btn {
-                border: 1px solid var(--line);
-                background: #ffffff;
-                color: #344054;
-                padding: 6px 10px;
-                border-radius: 999px;
-                cursor: pointer;
-                font-weight: 700;
-                font-size: 12px;
-            }
-
-            .tab-btn.active {
-                background: var(--blue);
-                color: #ffffff;
-                border-color: var(--blue);
-            }
-
-            .code-pane {
-                display: none;
-            }
-
-            .code-pane.active {
-                display: block;
-            }
-
-            .footer {
-                text-align: center;
-                color: var(--muted);
-                font-size: 13px;
-                padding: 30px 0;
-            }
-
-            @media (max-width: 900px) {
-                .layout {
-                    display: block;
-                }
-
-                .sidebar {
-                    width: 100%;
-                    height: auto;
-                    position: relative;
-                }
-
-                .main {
-                    padding: 18px;
-                }
-
-                .mini-grid {
-                    grid-template-columns: 1fr;
-                }
-            }
-        </style>
-    </head>
-
-    <body>
-        <div class="layout">
-            {{SIDEBAR}}
-
-            <main class="main">
-                <section class="hero">
-                    <h1>{{TITLE}}</h1>
-                    <p>{{SUBTITLE}}</p>
-                    <div class="base-url">Base URL: {{BASE_URL}}</div>
-                </section>
-
-                <section class="info-card" id="getting-started">
-                    <h2>Getting Started</h2>
-                    <p>To use this API, you need only three things:</p>
-                    <ol>
-                        <li>The API URL you want to call.</li>
-                        <li>Your API key.</li>
-                        <li>The parameters you want to send.</li>
-                    </ol>
-                    <p>Here is the same example in different languages:</p>
-                    {{FIRST_EXAMPLE}}
-                </section>
-
-                <section class="info-card" id="authentication">
-                    <h2>{{AUTH_TITLE}}</h2>
-                    <p>{{AUTH_DESCRIPTION}}</p>
-                    {{AUTH_TABLE}}
-                </section>
-
-                <section class="info-card" id="response-format">
-                    <h2>Response Format</h2>
-                    <p>Every API response follows the same structure.</p>
-
-                    <h3>Success Example</h3>
-                    <pre><code>{{SUCCESS_RESPONSE}}</code></pre>
-
-                    <h3>Error Example</h3>
-                    <pre><code>{{ERROR_RESPONSE}}</code></pre>
-                </section>
-
-                {{SECTIONS}}
-
-                <section class="info-card" id="errors">
-                    <h2>Error Codes</h2>
-                    <p>If something is wrong, the API returns an error code and message.</p>
-                    {{ERROR_TABLE}}
-                </section>
-
-                <div class="footer">
-                    LogiKlu Agent API Usage Guide
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{TITLE}}</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --bg: #0a0b0f;
+    --bg2: #111318;
+    --bg3: #181b22;
+    --bg4: #1e2230;
+    --border: #2a2f3d;
+    --border2: #3a4055;
+    --text: #e8eaf0;
+    --muted: #7a8099;
+    --accent: #00e5a0;
+    --accent2: #0099ff;
+    --accent3: #ff6b6b;
+    --accent4: #ffb347;
+    --purple: #a78bfa;
+    --code-bg: #0d1117;
+    --tag-get: #00e5a0;
+    --tag-post: #0099ff;
+    --tag-put: #ffb347;
+    --tag-delete: #ff6b6b;
+    --tag-patch: #a78bfa;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    min-height: 100vh;
+}
+
+.layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 0 0 2rem;
+    flex-shrink: 0;
+}
+
+.sidebar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+    background: var(--border2);
+    border-radius: 4px;
+}
+
+.sidebar-header {
+    padding: 1.25rem 1.25rem 1rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0.5rem;
+}
+
+.logo {
+    display: block;
+    cursor: pointer;
+}
+
+.logo img {
+    max-width: 190px;
+    height: auto;
+    display: block;
+}
+
+.sidebar-version {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 8px;
+}
+
+.nav-group {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgba(42, 47, 61, 0.65);
+}
+
+.nav-group-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0.25rem 1.5rem 0.5rem;
+}
+
+.nav-group-toggle {
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.55rem 1.5rem;
+    cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 13.5px;
+}
+
+.nav-group-toggle:hover {
+    background: var(--bg3);
+    color: var(--accent);
+}
+
+.menu-arrow {
+    transition: transform 0.2s;
+    color: var(--muted);
+}
+
+.api-nav-group:not(.open) .menu-arrow {
+    transform: rotate(-90deg);
+}
+
+.api-nav-group:not(.open) .nav-children {
+    display: none;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.4rem 1.5rem;
+    font-size: 13.5px;
+    color: var(--muted);
+    text-decoration: none;
+    transition: color 0.15s, background 0.15s;
+    border-left: 2px solid transparent;
+    cursor: pointer;
+}
+
+.nav-item:hover {
+    color: var(--text);
+    background: var(--bg3);
+}
+
+.nav-item.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: rgba(0,229,160,0.05);
+}
+
+.child-nav {
+    padding-left: 1.5rem;
+}
+
+.section-nav {
+    padding-left: 2rem;
+    font-size: 12.5px;
+}
+
+.nav-method {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 5px;
+    border-radius: 3px;
+    min-width: 42px;
+    text-align: center;
+}
+
+.m-get {
+    background: rgba(0,229,160,0.15);
+    color: var(--tag-get);
+}
+
+.m-post {
+    background: rgba(0,153,255,0.15);
+    color: var(--tag-post);
+}
+
+.m-put {
+    background: rgba(255,179,71,0.15);
+    color: var(--tag-put);
+}
+
+.m-delete {
+    background: rgba(255,107,107,0.15);
+    color: var(--tag-delete);
+}
+
+.m-patch {
+    background: rgba(167,139,250,0.15);
+    color: var(--tag-patch);
+}
+
+.main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+}
+
+.hero {
+    background: linear-gradient(135deg, var(--bg2) 0%, #0d1020 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 4rem 4rem 3rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.hero::before {
+    content: '';
+    position: absolute;
+    top: -80px;
+    right: -80px;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(0,229,160,0.08) 0%, transparent 70%);
+    border-radius: 50%;
+}
+
+.hero::after {
+    content: '';
+    position: absolute;
+    bottom: -60px;
+    left: 20%;
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(0,153,255,0.06) 0%, transparent 70%);
+    border-radius: 50%;
+}
+
+.hero-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+}
+
+.hero h1 {
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1.15;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, #e8eaf0 30%, #7a8099);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.hero-sub {
+    font-size: 16px;
+    color: var(--muted);
+    max-width: 650px;
+    line-height: 1.7;
+    margin-bottom: 2rem;
+}
+
+.hero-meta {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.hero-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+}
+
+.hero-badge span {
+    color: var(--accent);
+}
+
+.content {
+    padding: 3rem 4rem;
+    max-width: 1100px;
+}
+
+.section {
+    margin-bottom: 4rem;
+    padding-bottom: 3rem;
+    border-bottom: 1px solid var(--border);
+    scroll-margin-top: 24px;
+}
+
+.section:last-of-type {
+    border-bottom: none;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(0,229,160,0.1);
+    border: 1px solid rgba(0,229,160,0.2);
+    border-radius: 4px;
+    padding: 2px 8px;
+    min-width: 36px;
+    text-align: center;
+}
+
+.section-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--text);
+}
+
+.section-desc {
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.7;
+}
+
+.small-desc {
+    margin-bottom: 1rem;
+}
+
+.sub-title {
+    margin: 1.5rem 0 0.4rem;
+    font-size: 16px;
+}
+
+.endpoint-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+    transition: border-color 0.2s;
+    scroll-margin-top: 24px;
+}
+
+.endpoint-card:hover {
+    border-color: var(--border2);
+}
+
+.endpoint-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    background: var(--bg3);
+}
+
+.endpoint-header:hover {
+    background: var(--bg4);
+}
+
+.method-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 5px;
+    min-width: 56px;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+
+.endpoint-path {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 500;
+    flex: 1;
+}
+
+.endpoint-desc {
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.endpoint-toggle {
+    color: var(--muted);
+    font-size: 16px;
+    transition: transform 0.2s;
+    min-width: 16px;
+}
+
+.endpoint-card.open .endpoint-toggle {
+    transform: rotate(180deg);
+}
+
+.endpoint-body {
+    display: none;
+    padding: 1.25rem;
+}
+
+.endpoint-card.open .endpoint-body {
+    display: block;
+}
+
+.tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.tab-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: -1px;
+    letter-spacing: 0.3px;
+}
+
+.tab-btn:hover {
+    color: var(--text);
+}
+
+.tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.small-tabs {
+    margin-bottom: 0.75rem;
+}
+
+.lang-tab {
+    font-size: 11px;
+    padding: 0.45rem 0.75rem;
+}
+
+.endpoint-tab-content,
+.lang-content {
+    display: none;
+}
+
+.endpoint-tab-content.active,
+.lang-content.active {
+    display: block;
+}
+
+.code-wrap {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    margin-bottom: 1rem;
+}
+
+.code-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    background: #0d1117;
+    border-bottom: 1px solid var(--border);
+}
+
+.code-lang {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+}
+
+.copy-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.copy-btn:hover {
+    color: var(--accent);
+    border-color: rgba(0,229,160,0.4);
+}
+
+.copy-btn.copied {
+    color: var(--accent);
+}
+
+pre {
+    background: var(--code-bg);
+    padding: 1.25rem;
+    overflow-x: auto;
+    margin: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.75;
+    white-space: pre;
+}
+
+pre code {
+    font-family: inherit;
+    color: var(--text);
+}
+
+.params-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-bottom: 1rem;
+}
+
+.params-table th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+}
+
+.params-table td {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+
+.params-table tr:hover td {
+    background: var(--bg3);
+}
+
+.param-name {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent2);
+    font-size: 12.5px;
+}
+
+.param-type {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--purple);
+    background: rgba(167,139,250,0.1);
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.param-req {
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+}
+
+.req {
+    background: rgba(255,107,107,0.1);
+    color: var(--accent3);
+}
+
+.opt {
+    background: rgba(122,128,153,0.1);
+    color: var(--muted);
+}
+
+.param-desc {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.response-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.response-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 0.65rem 0.75rem;
+    background: var(--bg3);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    font-size: 13px;
+}
+
+.status-code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    min-width: 44px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.s2 {
+    background: rgba(0,229,160,0.1);
+    color: var(--accent);
+}
+
+.s4 {
+    background: rgba(255,107,107,0.1);
+    color: var(--accent3);
+}
+
+.s5 {
+    background: rgba(255,179,71,0.1);
+    color: var(--accent4);
+}
+
+.info-box {
+    display: flex;
+    gap: 12px;
+    padding: 1rem 1.25rem;
+    border-radius: 8px;
+    margin-bottom: 1.25rem;
+    font-size: 13.5px;
+    line-height: 1.6;
+}
+
+.info-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.info-note {
+    background: rgba(0,153,255,0.07);
+    border: 1px solid rgba(0,153,255,0.2);
+    color: #a0c4f5;
+}
+
+.info-warn {
+    background: rgba(255,179,71,0.07);
+    border: 1px solid rgba(255,179,71,0.2);
+    color: #f5d08a;
+}
+
+.info-tip {
+    background: rgba(0,229,160,0.07);
+    border: 1px solid rgba(0,229,160,0.2);
+    color: #80f0cb;
+}
+
+.base-url-box {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0.875rem 1.25rem;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+}
+
+.base-url-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    min-width: 80px;
+}
+
+.base-url-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13.5px;
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.auth-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.auth-card {
+    padding: 1.25rem;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.auth-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+}
+
+.auth-card-desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+}
+
+.example-block {
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    border-radius: 10px;
+    padding: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.example-title {
+    font-weight: 700;
+    margin-bottom: 0.2rem;
+}
+
+.example-desc {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 0.8rem;
+}
+
+.tryout-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem;
+}
+
+.try-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.try-field {
+    margin-bottom: 1rem;
+}
+
+.try-field label {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 0.35rem;
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 600;
+}
+
+.try-field label small {
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+}
+
+.try-field input,
+.try-field textarea {
+    width: 100%;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 7px;
+    padding: 0.7rem 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    outline: none;
+}
+
+.try-field input:focus,
+.try-field textarea:focus {
+    border-color: var(--accent);
+}
+
+.try-field p {
+    margin-top: 0.3rem;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.try-btn {
+    border: none;
+    background: var(--accent);
+    color: #06110d;
+    font-weight: 800;
+    padding: 0.75rem 1.2rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    margin-bottom: 1rem;
+}
+
+.try-btn:hover {
+    filter: brightness(1.08);
+}
+
+.try-url {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 0.75rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.try-url span {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.25rem;
+}
+
+.try-url code {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent);
+    word-break: break-all;
+}
+
+.try-response-wrap {
+    margin-bottom: 0;
+}
+
+.page-footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+@media (max-width: 980px) {
+    .sidebar {
+        display: none;
+    }
+
+    .hero {
+        padding: 2rem 1.5rem;
+    }
+
+    .content {
+        padding: 2rem 1.5rem;
+    }
+
+    .auth-grid,
+    .try-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .endpoint-header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .endpoint-desc {
+        width: 100%;
+    }
+}
+</style>
+</head>
+
+<body>
+<div class="layout">
+
+{{SIDEBAR}}
+
+<main class="main">
+
+    <div class="hero" id="overview">
+        <div class="hero-eyebrow">Documentation</div>
+        <h1>{{TITLE}}</h1>
+        <p class="hero-sub">{{SUBTITLE}}</p>
+
+        <div class="hero-meta">
+            <div class="hero-badge">Base URL <span>{{BASE_URL}}</span></div>
+            <div class="hero-badge">Format <span>JSON</span></div>
+            <div class="hero-badge">Auth <span>X-API-KEY</span></div>
+            <div class="hero-badge">TLS <span>Required</span></div>
+        </div>
+    </div>
+
+    <div class="content">
+
+        <div class="section" id="authentication">
+            <div class="section-header">
+                <span class="section-num">01</span>
+                <h2 class="section-title">Authentication</h2>
+            </div>
+
+            <p class="section-desc">
+                Every protected API request must include your API key in the request header.
+                The API key tells LogiKlu which client is asking for data.
+            </p>
+
+            <div class="base-url-box">
+                <span class="base-url-label">Base URL</span>
+                <span class="base-url-value">{{BASE_URL}}</span>
+            </div>
+
+            <div class="auth-grid">
+                <div class="auth-card">
+                    <div class="auth-card-title">API Key Header</div>
+                    <div class="auth-card-desc">
+                        Send your API key using <code>X-API-KEY</code>. Without this header, protected APIs will return an authentication error.
+                    </div>
                 </div>
-            </main>
+                <div class="auth-card">
+                    <div class="auth-card-title">Content Type</div>
+                    <div class="auth-card-desc">
+                        For GET APIs no body is required. For POST/PATCH APIs, send JSON with <code>Content-Type: application/json</code>.
+                    </div>
+                </div>
+            </div>
+
+            {{AUTH_CODE}}
+
+            <div class="info-box info-warn">
+                <span class="info-icon">⚠</span>
+                <div>Never expose your API key in public frontend code or public repositories. Treat it like a password.</div>
+            </div>
         </div>
 
-        <script>
-            document.addEventListener("click", function (event) {
-                if (!event.target.classList.contains("tab-btn")) {
-                    return;
-                }
+        <div class="section" id="response-format">
+            <div class="section-header">
+                <span class="section-num">02</span>
+                <h2 class="section-title">Response Format</h2>
+            </div>
 
-                const targetId = event.target.getAttribute("data-target");
-                const wrapper = event.target.closest(".code-tabs");
+            <p class="section-desc">
+                Every API response follows the same simple structure: status, message, meta, and data.
+            </p>
 
-                if (!wrapper || !targetId) {
-                    return;
-                }
+            {{SUCCESS_CODE}}
 
-                wrapper.querySelectorAll(".tab-btn").forEach(function (button) {
-                    button.classList.remove("active");
-                });
+            {{ERROR_CODE}}
+        </div>
 
-                wrapper.querySelectorAll(".code-pane").forEach(function (pane) {
-                    pane.classList.remove("active");
-                });
+        <div class="section" id="quick-start">
+            <div class="section-header">
+                <span class="section-num">03</span>
+                <h2 class="section-title">Quick Start</h2>
+            </div>
 
-                event.target.classList.add("active");
+            <p class="section-desc">
+                This example fetches the first 20 accounts. Select the language you use and copy the code.
+            </p>
 
-                const targetPane = document.getElementById(targetId);
-                if (targetPane) {
-                    targetPane.classList.add("active");
-                }
-            });
-        </script>
-    </body>
-    </html>
+            {{QUICK_START_CODE}}
+        </div>
+
+        {{SECTIONS}}
+
+        <div class="section" id="errors">
+            <div class="section-header">
+                <span class="section-num">99</span>
+                <h2 class="section-title">Error Handling</h2>
+            </div>
+
+            <p class="section-desc">
+                If something is wrong, the API returns an error code and a message explaining what happened.
+            </p>
+
+            <div class="response-list">
+                <div class="response-item"><span class="status-code s2">200</span> OK — Request succeeded</div>
+                <div class="response-item"><span class="status-code s4">400</span> Bad Request — Invalid or missing parameters</div>
+                <div class="response-item"><span class="status-code s4">401</span> Unauthorized — Missing or invalid API key</div>
+                <div class="response-item"><span class="status-code s4">403</span> Forbidden — Client is not allowed to access this data</div>
+                <div class="response-item"><span class="status-code s4">404</span> Not Found — Requested account/contact does not exist</div>
+                <div class="response-item"><span class="status-code s5">500</span> Server Error — Unexpected internal error</div>
+            </div>
+
+            <div class="response-list">
+                {{ERROR_CODES}}
+            </div>
+        </div>
+
+        <div class="page-footer">
+            <span>LogiKlu Agent API Guide</span>
+            <span>Last updated 2026</span>
+        </div>
+
+    </div>
+</main>
+</div>
+
+<script>
+function toggleCard(header) {
+    const card = header.closest('.endpoint-card');
+    if (!card) return;
+    card.classList.toggle('open');
+}
+
+function toggleMenuGroup(button) {
+    const group = button.closest('.api-nav-group');
+    if (!group) return;
+    group.classList.toggle('open');
+}
+
+function switchEndpointTab(button, targetId) {
+    const body = button.closest('.endpoint-body');
+    if (!body) return;
+
+    body.querySelectorAll('.endpoint-tabs .tab-btn').forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+
+    body.querySelectorAll('.endpoint-tab-content').forEach(function(content) {
+        content.classList.remove('active');
+    });
+
+    button.classList.add('active');
+
+    const target = document.getElementById(targetId);
+    if (target) {
+        target.classList.add('active');
+    }
+}
+
+function switchLangTab(button, targetId) {
+    const wrapper = button.closest('.language-tabs');
+    if (!wrapper) return;
+
+    wrapper.querySelectorAll('.lang-tab').forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+
+    wrapper.querySelectorAll('.lang-content').forEach(function(content) {
+        content.classList.remove('active');
+    });
+
+    button.classList.add('active');
+
+    const target = document.getElementById(targetId);
+    if (target) {
+        target.classList.add('active');
+    }
+}
+
+function copyCode(button) {
+    const wrap = button.closest('.code-wrap');
+    if (!wrap) return;
+
+    const code = wrap.querySelector('pre');
+    if (!code) return;
+
+    navigator.clipboard.writeText(code.innerText).then(function() {
+        button.textContent = 'Copied!';
+        button.classList.add('copied');
+
+        setTimeout(function() {
+            button.textContent = 'Copy';
+            button.classList.remove('copied');
+        }, 1600);
+    });
+}
+
+function scrollToSection(id) {
+    const element = document.getElementById(id);
+    if (!element) return;
+
+    element.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+    });
+
+    document.querySelectorAll('.nav-item').forEach(function(item) {
+        item.classList.remove('active');
+    });
+
+    if (window.event && window.event.currentTarget) {
+        window.event.currentTarget.classList.add('active');
+    }
+}
+
+function buildTryOutUrl(box) {
+    let baseUrl = box.getAttribute('data-base-url') || '';
+    let path = box.getAttribute('data-path') || '';
+    let method = box.getAttribute('data-method') || 'GET';
+
+    const params = new URLSearchParams();
+    const inputs = box.querySelectorAll('[data-param-name]');
+
+    inputs.forEach(function(input) {
+        const name = input.getAttribute('data-param-name');
+        const value = input.value.trim();
+
+        if (!name || value === '') {
+            return;
+        }
+
+        const pathToken = '{' + name + '}';
+
+        if (path.includes(pathToken)) {
+            path = path.replace(pathToken, encodeURIComponent(value));
+        } else if (method === 'GET') {
+            params.append(name, value);
+        }
+    });
+
+    let url = baseUrl.replace(/\\/$/, '') + '/' + path.replace(/^\\//, '');
+
+    const queryString = params.toString();
+
+    if (queryString) {
+        url += '?' + queryString;
+    }
+
+    return url;
+}
+
+async function sendTryOutRequest(button) {
+    const box = button.closest('.tryout-box');
+
+    if (!box) {
+        return;
+    }
+
+    const apiKeyInput = box.querySelector('[data-api-key]');
+    const responseBox = box.querySelector('[data-try-response]');
+    const requestUrlBox = box.querySelector('[data-request-url]');
+    const method = box.getAttribute('data-method') || 'GET';
+
+    const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+
+    if (!apiKey) {
+        responseBox.textContent = JSON.stringify({
+            status: "error",
+            message: "Please enter API key first."
+        }, null, 2);
+        return;
+    }
+
+    const url = buildTryOutUrl(box);
+
+    requestUrlBox.textContent = url;
+    responseBox.textContent = "Loading...";
+
+    const headers = {
+        "X-API-KEY": apiKey
+    };
+
+    const options = {
+        method: method,
+        headers: headers
+    };
+
+    if (method !== 'GET') {
+        headers["Content-Type"] = "application/json";
+
+        const bodyBox = box.querySelector('[data-body-json]');
+        const bodyText = bodyBox ? bodyBox.value.trim() : "{}";
+
+        try {
+            options.body = JSON.stringify(JSON.parse(bodyText || "{}"));
+        } catch (error) {
+            responseBox.textContent = JSON.stringify({
+                status: "error",
+                message: "Invalid JSON body.",
+                detail: error.message
+            }, null, 2);
+            return;
+        }
+    }
+
+    try {
+        const response = await fetch(url, options);
+        const contentType = response.headers.get("content-type") || "";
+
+        let data;
+
+        if (contentType.includes("application/json")) {
+            data = await response.json();
+        } else {
+            data = await response.text();
+        }
+
+        responseBox.textContent = JSON.stringify({
+            http_status: response.status,
+            response: data
+        }, null, 2);
+
+    } catch (error) {
+        responseBox.textContent = JSON.stringify({
+            status: "error",
+            message: "Request failed.",
+            detail: error.message
+        }, null, 2);
+    }
+}
+</script>
+
+</body>
+</html>
     """
 
     page = template
@@ -1254,13 +2184,11 @@ def render_usage_page(data: Dict[str, Any]) -> str:
     page = page.replace("{{SUBTITLE}}", esc(data.get("subtitle")))
     page = page.replace("{{BASE_URL}}", esc(base_url))
     page = page.replace("{{SIDEBAR}}", render_sidebar(data))
-    page = page.replace("{{FIRST_EXAMPLE}}", render_code_tabs("getting-started-example", first_example_code))
-    page = page.replace("{{AUTH_TITLE}}", esc(data.get("auth", {}).get("title")))
-    page = page.replace("{{AUTH_DESCRIPTION}}", esc(data.get("auth", {}).get("description")))
-    page = page.replace("{{AUTH_TABLE}}", render_table(["Header", "Required", "Description"], auth_rows))
-    page = page.replace("{{SUCCESS_RESPONSE}}", json_pretty(data.get("response_format", {}).get("success")))
-    page = page.replace("{{ERROR_RESPONSE}}", json_pretty(data.get("response_format", {}).get("error")))
-    page = page.replace("{{SECTIONS}}", sections_html)
-    page = page.replace("{{ERROR_TABLE}}", render_table(["Error Code", "Meaning", "How to Fix"], error_rows))
+    page = page.replace("{{AUTH_CODE}}", render_code_block("X-API-KEY: YOUR_API_KEY\nContent-Type: application/json", "HTTP Headers"))
+    page = page.replace("{{SUCCESS_CODE}}", render_code_block(json.dumps(data.get("response_format", {}).get("success", {}), indent=2), "JSON · Success Response"))
+    page = page.replace("{{ERROR_CODE}}", render_code_block(json.dumps(data.get("response_format", {}).get("error", {}), indent=2), "JSON · Error Response"))
+    page = page.replace("{{QUICK_START_CODE}}", render_language_tabs("quick-start-example", first_example_code))
+    page = page.replace("{{SECTIONS}}", render_sections(data))
+    page = page.replace("{{ERROR_CODES}}", render_error_codes(data))
 
     return page
