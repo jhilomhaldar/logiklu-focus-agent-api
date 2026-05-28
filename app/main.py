@@ -36,3 +36,12 @@ def root():
         "docs": "/docs",
         "health": f"/api/{settings.API_VERSION}/health",
     }
+
+@app.get("/deployment-test")
+def deployment_test():
+    return {
+        "status": "ok",
+        "repo": "logiklu-focus-agent-api",
+        "owner": "jhilomhaldar",
+        "deployment_test": "repo-transfer-success"
+    }
