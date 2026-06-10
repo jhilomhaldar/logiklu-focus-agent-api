@@ -4,24 +4,7 @@ API_USAGE_DATA = {
     "base_url": "https://api.logiklu.com",
     "sandbox_base_url": "https://sandboxapi.logiklu.com",
     "local_base_url": "http://127.0.0.1:8000",
-    "api_version": "v1",
-    "environments": [
-        {
-            "name": "Sandbox",
-            "base_url": "https://sandboxapi.logiklu.com",
-            "description": "Use this environment for testing API integration before production release."
-        },
-        {
-            "name": "Production",
-            "base_url": "https://api.logiklu.com",
-            "description": "Use this environment for live production API calls."
-        },
-        {
-            "name": "Local",
-            "base_url": "http://127.0.0.1:8000",
-            "description": "Use this environment only during local development."
-        }
-    ],
+    "api_version": "v1",    
     "auth": {
         "title": "Authentication",
         "description": "Every protected API request must include your API key in the request header.",

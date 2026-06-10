@@ -2,6 +2,7 @@ import html
 import json
 from typing import Any, Dict, List
 from urllib.parse import urlencode
+from app.config import settings
 
 
 def esc(value: Any) -> str:
@@ -965,38 +966,51 @@ def render_error_codes(data: Dict[str, Any]) -> str:
 
     return rows
 
+def get_current_environment_name() -> str:
+    api_env = str(getattr(settings, "API_ENV", "production") or "production").strip().lower()
+
+    if api_env == "sandbox":
+        return "Sandbox"
+
+    return "Production"
+
+
+def get_current_base_url(data: Dict[str, Any]) -> str:
+    api_env = str(getattr(settings, "API_ENV", "production") or "production").strip().lower()
+
+    if api_env == "sandbox":
+        return data.get("sandbox_base_url") or data.get("base_url") or ""
+
+    return data.get("base_url") or ""
+
 def render_environments(data: Dict[str, Any]) -> str:
-    environments = data.get("environments", [])
+    environment_name = get_current_environment_name()
+    base_url = get_current_base_url(data)
 
-    if not environments:
-        return ""
+    description = "Use this sandbox environment for testing API integration before production release."
 
-    cards = ""
-
-    for env in environments:
-        cards += f"""
-        <div class="auth-card">
-            <div class="auth-card-title">{esc(env.get("name"))}</div>
-            <div class="auth-card-desc">
-                <code>{esc(env.get("base_url"))}</code><br>
-                {esc(env.get("description"))}
-            </div>
-        </div>
-        """
+    if environment_name == "Production":
+        description = "Use this production environment for live API calls."
 
     return f"""
     <div class="section" id="environments">
         <div class="section-header">
             <span class="section-num">00</span>
-            <h2 class="section-title">Environments</h2>
+            <h2 class="section-title">Environment</h2>
         </div>
 
         <p class="section-desc">
-            Use sandbox for testing and production for live API calls.
+            This documentation page shows the base URL for the current API environment only.
         </p>
 
-        <div class="auth-grid">
-            {cards}
+        <div class="base-url-box">
+            <span class="base-url-label">{esc(environment_name)} API</span>
+            <span class="base-url-value">{esc(base_url)}</span>
+        </div>
+
+        <div class="info-box info-note">
+            <span class="info-icon">ℹ</span>
+            <div>{esc(description)}</div>
         </div>
     </div>
     """
@@ -1052,7 +1066,7 @@ def render_logging_section(data: Dict[str, Any]) -> str:
 
 
 def render_usage_page(data: Dict[str, Any]) -> str:
-    base_url = data.get("base_url", "")
+    base_url = get_current_base_url(data)
     first_example_url = build_url(base_url, "/api/v1/accounts", {"limit": 20, "offset": 0})
     first_example_code = generate_code_examples("GET", first_example_url)
 
@@ -1982,7 +1996,7 @@ pre code {
         <p class="hero-sub">{{SUBTITLE}}</p>
 
         <div class="hero-meta">
-            <div class="hero-badge">Base URL <span>{{BASE_URL}}</span></div>
+            <div class="hero-badge">{{ENV_NAME}} URL <span>{{BASE_URL}}</span></div>
             <div class="hero-badge">Format <span>JSON</span></div>
             <div class="hero-badge">Auth <span>X-API-KEY</span></div>
             <div class="hero-badge">TLS <span>Required</span></div>
@@ -2311,6 +2325,7 @@ async function sendTryOutRequest(button) {
     page = page.replace("{{TITLE}}", esc(data.get("title")))
     page = page.replace("{{SUBTITLE}}", esc(data.get("subtitle")))
     page = page.replace("{{BASE_URL}}", esc(base_url))
+    page = page.replace("{{ENV_NAME}}", esc(get_current_environment_name()))
     page = page.replace("{{SIDEBAR}}", render_sidebar(data))
     page = page.replace("{{AUTH_CODE}}", render_code_block("X-API-KEY: YOUR_API_KEY\nContent-Type: application/json", "HTTP Headers"))
     page = page.replace("{{SUCCESS_CODE}}", render_code_block(json.dumps(data.get("response_format", {}).get("success", {}), indent=2), "JSON · Success Response"))
