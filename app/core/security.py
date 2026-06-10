@@ -7,9 +7,23 @@ from fastapi import Request, HTTPException, status
 
 from app.config import settings
 from app.db.master import get_master_connection
+from app.core.response import error_response
 
 
 AUTH_TIMESTAMP_TOLERANCE_SECONDS = 300
+
+
+def get_api_environment() -> str:
+    api_env = str(getattr(settings, "API_ENV", "production") or "production").strip().lower()
+
+    if api_env == "sandbox":
+        return "sandbox"
+
+    return "production"
+
+
+def hash_api_key(api_key: str) -> str:
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
 
 
 def get_header_value(request: Request, name: str) -> str:
@@ -19,6 +33,7 @@ def get_header_value(request: Request, name: str) -> str:
 
 def get_client_ip(request: Request) -> str:
     forwarded_for = request.headers.get("x-forwarded-for")
+
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
 
@@ -67,19 +82,52 @@ def generate_signature(api_secret: str, payload: str) -> str:
     ).hexdigest()
 
 
-def fetch_api_client(api_key: str) -> Optional[dict]:
+def raise_auth_error(http_status: int, message: str, error_code: str, data=None):
+    raise HTTPException(
+        status_code=http_status,
+        detail=error_response(
+            message=message,
+            error_code=error_code,
+            data=data,
+        ),
+    )
+
+
+def fetch_api_client(api_key: str, api_environment: str) -> Optional[dict]:
     connection = None
+    api_key_hash = hash_api_key(api_key)
+
+    if api_environment == "sandbox":
+        key_condition = """
+            (
+                ac.sandbox_api_key = %s
+                OR ac.sandbox_api_key_hash = %s
+            )
+        """
+    else:
+        key_condition = """
+            (
+                ac.production_api_key = %s
+                OR ac.production_api_key_hash = %s
+            )
+        """
 
     try:
         connection = get_master_connection()
 
         with connection.cursor() as cursor:
-            sql = """
+            sql = f"""
                 SELECT
                     ac.api_client_id,
                     ac.domain_id,
                     ac.api_client_name,
+
                     ac.api_key,
+                    ac.sandbox_api_key,
+                    ac.sandbox_api_key_hash,
+                    ac.production_api_key,
+                    ac.production_api_key_hash,
+
                     ac.api_secret,
                     ac.allowed_ips,
                     ac.allowed_origins,
@@ -100,11 +148,11 @@ def fetch_api_client(api_key: str) -> Optional[dict]:
                 FROM lk_agent_api_clients ac
                 INNER JOIN zp_subscription_domain_info d
                     ON d.domain_id = ac.domain_id
-                WHERE ac.api_key = %s
+                WHERE {key_condition}
                 LIMIT 1
             """
 
-            cursor.execute(sql, (api_key,))
+            cursor.execute(sql, (api_key, api_key_hash))
 
             return cursor.fetchone()
 
@@ -114,9 +162,12 @@ def fetch_api_client(api_key: str) -> Optional[dict]:
 
 
 async def authenticate_request(request: Request) -> dict:
+    api_environment = get_api_environment()
+
     if not settings.API_AUTH_ENABLED:
         auth_context = {
             "authenticated": True,
+            "api_environment": api_environment,
             "api_client_id": 0,
             "domain_id": 0,
             "api_client_name": "auth_disabled",
@@ -140,109 +191,80 @@ async def authenticate_request(request: Request) -> dict:
     signature = get_header_value(request, "X-SIGNATURE")
 
     if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "status": "error",
-                "message": "Missing API key",
-                "error_code": "AUTH_API_KEY_MISSING",
-                "data": None,
-            },
+        raise_auth_error(
+            http_status=status.HTTP_401_UNAUTHORIZED,
+            message="Missing API key",
+            error_code="AUTH_API_KEY_MISSING",
         )
 
-    api_client = fetch_api_client(api_key)
+    api_client = fetch_api_client(
+        api_key=api_key,
+        api_environment=api_environment,
+    )
 
     if not api_client:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "status": "error",
-                "message": "Invalid API key",
-                "error_code": "AUTH_INVALID_API_KEY",
-                "data": None,
+        raise_auth_error(
+            http_status=status.HTTP_401_UNAUTHORIZED,
+            message=f"Invalid API key for {api_environment} environment",
+            error_code="AUTH_INVALID_API_KEY",
+            data={
+                "environment": api_environment,
             },
         )
 
     if api_client.get("api_status") != "ACTIVE":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "status": "error",
-                "message": "API client is not active",
-                "error_code": "AUTH_API_CLIENT_INACTIVE",
-                "data": None,
-            },
+        raise_auth_error(
+            http_status=status.HTTP_403_FORBIDDEN,
+            message="API client is not active",
+            error_code="AUTH_API_CLIENT_INACTIVE",
         )
 
     if api_client.get("subscription_status") != "ACTIVE":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "status": "error",
-                "message": "Client subscription is not active",
-                "error_code": "AUTH_SUBSCRIPTION_INACTIVE",
-                "data": None,
-            },
+        raise_auth_error(
+            http_status=status.HTTP_403_FORBIDDEN,
+            message="Client subscription is not active",
+            error_code="AUTH_SUBSCRIPTION_INACTIVE",
         )
 
     if api_client.get("active_status") != "ACTIVE":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "status": "error",
-                "message": "Client account is not active",
-                "error_code": "AUTH_CLIENT_ACCOUNT_INACTIVE",
-                "data": None,
-            },
+        raise_auth_error(
+            http_status=status.HTTP_403_FORBIDDEN,
+            message="Client account is not active",
+            error_code="AUTH_CLIENT_ACCOUNT_INACTIVE",
         )
 
     if not api_client.get("databasename"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "status": "error",
-                "message": "Client database is not configured",
-                "error_code": "AUTH_CLIENT_DATABASE_MISSING",
-                "data": None,
-            },
+        raise_auth_error(
+            http_status=status.HTTP_403_FORBIDDEN,
+            message="Client database is not configured",
+            error_code="AUTH_CLIENT_DATABASE_MISSING",
         )
 
     client_ip = get_client_ip(request)
 
     if not is_ip_allowed(client_ip, api_client.get("allowed_ips")):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "status": "error",
-                "message": "IP address is not allowed",
-                "error_code": "AUTH_IP_NOT_ALLOWED",
-                "data": {
-                    "ip_address": client_ip,
-                },
+        raise_auth_error(
+            http_status=status.HTTP_403_FORBIDDEN,
+            message="IP address is not allowed",
+            error_code="AUTH_IP_NOT_ALLOWED",
+            data={
+                "ip_address": client_ip,
             },
         )
 
     if settings.API_SIGNATURE_REQUIRED:
         if not timestamp_value or not signature:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={
-                    "status": "error",
-                    "message": "Missing signature headers",
-                    "error_code": "AUTH_SIGNATURE_HEADERS_MISSING",
-                    "data": None,
-                },
+            raise_auth_error(
+                http_status=status.HTTP_401_UNAUTHORIZED,
+                message="Missing signature headers",
+                error_code="AUTH_SIGNATURE_HEADERS_MISSING",
             )
 
         if not validate_timestamp(timestamp_value):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={
-                    "status": "error",
-                    "message": "Invalid or expired timestamp",
-                    "error_code": "AUTH_TIMESTAMP_INVALID",
-                    "data": None,
-                },
+            raise_auth_error(
+                http_status=status.HTTP_401_UNAUTHORIZED,
+                message="Invalid or expired timestamp",
+                error_code="AUTH_TIMESTAMP_INVALID",
             )
 
         body_bytes = await request.body()
@@ -260,18 +282,15 @@ async def authenticate_request(request: Request) -> dict:
         )
 
         if not hmac.compare_digest(expected_signature, signature):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={
-                    "status": "error",
-                    "message": "Invalid request signature",
-                    "error_code": "AUTH_SIGNATURE_INVALID",
-                    "data": None,
-                },
+            raise_auth_error(
+                http_status=status.HTTP_401_UNAUTHORIZED,
+                message="Invalid request signature",
+                error_code="AUTH_SIGNATURE_INVALID",
             )
 
     auth_context = {
         "authenticated": True,
+        "api_environment": api_environment,
         "api_client_id": api_client.get("api_client_id"),
         "domain_id": api_client.get("domain_id"),
         "api_client_name": api_client.get("api_client_name"),
