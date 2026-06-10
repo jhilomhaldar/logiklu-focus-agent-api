@@ -205,7 +205,7 @@ async def authenticate_request(request: Request) -> dict:
     if not api_client:
         raise_auth_error(
             http_status=status.HTTP_401_UNAUTHORIZED,
-            message=f"Invalid API key for {api_environment} environment",
+            message=f"Invalid API key",
             error_code="AUTH_INVALID_API_KEY",
             data={
                 "environment": api_environment,
