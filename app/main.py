@@ -32,7 +32,7 @@ app.include_router(api_router)
 def root():
     return {
         "status": "success",
-        "message": "Welcome to LogiKlu Focus Agent API",
+        "message": "Welcome to LogiKlu Focus Agent API - Sandbox",
         "docs": "/docs",
         "health": f"/api/{settings.API_VERSION}/health",
     }
