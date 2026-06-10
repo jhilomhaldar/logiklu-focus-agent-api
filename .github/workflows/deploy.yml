@@ -29,10 +29,8 @@ jobs:
         run: |
           if [ "${GITHUB_REF_NAME}" = "production" ]; then
             echo "IMAGE_TAG=latest" >> $GITHUB_ENV
-            echo "DEPLOY_PATH=/opt/logiklu/logiklu-focus-agent-api" >> $GITHUB_ENV
           elif [ "${GITHUB_REF_NAME}" = "sandbox" ]; then
             echo "IMAGE_TAG=sandbox" >> $GITHUB_ENV
-            echo "DEPLOY_PATH=/opt/logiklu/logiklu-focus-agent-api-sandbox" >> $GITHUB_ENV
           else
             echo "Unsupported branch: ${GITHUB_REF_NAME}"
             exit 1
@@ -47,7 +45,7 @@ jobs:
           docker build -t $IMAGE_URI .
           docker push $IMAGE_URI
 
-            - name: Deploy Production on EC2
+      - name: Deploy Production on EC2
         if: github.ref_name == 'production'
         uses: appleboy/ssh-action@v1.0.3
         with:
