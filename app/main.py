@@ -45,9 +45,14 @@ app.include_router(api_router)
 
 @app.get("/")
 def root():
+    api_env = str(getattr(settings, "API_ENV", "production") or "production").lower()
+
+    environment_label = " - Sandbox" if api_env == "sandbox" else ""
+
     return {
         "status": "success",
-        "message": "Welcome to LogiKlu Focus Agent API - Sandbox",
+        "message": f"Welcome to LogiKlu Focus Agent API{environment_label}",
+        "environment": api_env,
         "docs": "/docs",
         "health": f"/api/{settings.API_VERSION}/health",
     }
