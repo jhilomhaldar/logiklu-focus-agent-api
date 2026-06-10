@@ -1,5 +1,5 @@
 import json
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
@@ -12,14 +12,27 @@ from app.services.account_service import (
     fetch_account_dynamic_details,
     fetch_contacts_for_accounts,
     fetch_account_by_id,
+    ALLOWED_FILTER_FIELDS,
 )
 
 router = APIRouter()
 
 
-def parse_filters(filters: Optional[str]):
+RESERVED_QUERY_PARAMS = {
+    "limit",
+    "offset",
+    "search",
+    "search_by",
+    "searchby",
+    "lead_publish_status",
+    "computed_lead_category",
+    "filters",
+}
+
+
+def parse_filters(filters: Optional[str]) -> List[Dict[str, Any]]:
     if not filters:
-        return None
+        return []
 
     try:
         parsed = json.loads(filters)
@@ -27,10 +40,113 @@ def parse_filters(filters: Optional[str]):
         if isinstance(parsed, list):
             return parsed
 
-        return None
+        return []
 
     except Exception:
-        return None
+        return []
+
+
+def parse_multi_field_filters(request: Request) -> List[Dict[str, Any]]:
+    """
+    Converts normal query params into filter objects.
+
+    Example:
+    /accounts?industry=Software&city=Kolkata&country=India
+
+    becomes:
+    [
+        {"field": "industry", "operator": "like", "value": "Software"},
+        {"field": "city", "operator": "like", "value": "Kolkata"},
+        {"field": "country", "operator": "like", "value": "India"}
+    ]
+    """
+
+    filters: List[Dict[str, Any]] = []
+
+    for key in request.query_params.keys():
+        clean_key = str(key or "").strip()
+
+        if not clean_key:
+            continue
+
+        if clean_key in RESERVED_QUERY_PARAMS:
+            continue
+
+        if clean_key not in ALLOWED_FILTER_FIELDS:
+            continue
+
+        values = request.query_params.getlist(clean_key)
+
+        cleaned_values: List[str] = []
+
+        for value in values:
+            if value is None:
+                continue
+
+            value_string = str(value).strip()
+
+            if not value_string:
+                continue
+
+            # Allow comma-separated values:
+            # ?country=India,USA
+            if "," in value_string:
+                cleaned_values.extend(
+                    [
+                        item.strip()
+                        for item in value_string.split(",")
+                        if item.strip()
+                    ]
+                )
+            else:
+                cleaned_values.append(value_string)
+
+        if not cleaned_values:
+            continue
+
+        # Multiple values means IN condition
+        if len(cleaned_values) > 1:
+            filters.append(
+                {
+                    "field": clean_key,
+                    "operator": "in",
+                    "value": cleaned_values,
+                }
+            )
+            continue
+
+        single_value = cleaned_values[0]
+
+        # IDs and exact-status fields should be exact match
+        if clean_key in [
+            "account_id",
+            "lead_status_id",
+            "owner",
+            "created_by",
+            "modified_by",
+            "lead_segment",
+            "lead_category",
+            "lead_type",
+            "source",
+        ]:
+            filters.append(
+                {
+                    "field": clean_key,
+                    "operator": "eq",
+                    "value": single_value,
+                }
+            )
+        else:
+            # Text fields use LIKE
+            filters.append(
+                {
+                    "field": clean_key,
+                    "operator": "like",
+                    "value": single_value,
+                }
+            )
+
+    return filters
 
 
 @router.get("/accounts")
@@ -47,7 +163,11 @@ def get_accounts(
 ):
     try:
         client_database = auth_context.get("client_database")
+
         parsed_filters = parse_filters(filters)
+        query_filters = parse_multi_field_filters(request)
+
+        final_filters = parsed_filters + query_filters
 
         accounts = fetch_accounts(
             client_database=client_database,
@@ -57,7 +177,7 @@ def get_accounts(
             search_by=search_by,
             lead_publish_status=lead_publish_status,
             computed_lead_category=computed_lead_category,
-            filters=parsed_filters,
+            filters=final_filters,
         )
 
         total_records = count_accounts(
@@ -66,7 +186,7 @@ def get_accounts(
             search_by=search_by,
             lead_publish_status=lead_publish_status,
             computed_lead_category=computed_lead_category,
-            filters=parsed_filters,
+            filters=final_filters,
         )
 
         if accounts:
@@ -97,6 +217,7 @@ def get_accounts(
                 "search_by": search_by,
                 "lead_publish_status": lead_publish_status,
                 "computed_lead_category": computed_lead_category,
+                "applied_filters": final_filters,
                 "record_count": len(accounts),
                 "total_records": total_records,
             },
@@ -117,7 +238,8 @@ def get_accounts(
                 },
             ),
         )
-    
+
+
 @router.get("/accounts/{account_id}")
 def get_account_detail(
     account_id: int,

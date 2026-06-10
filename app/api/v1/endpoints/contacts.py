@@ -1,13 +1,128 @@
-from typing import Optional
+import json
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 
 from app.core.response import success_response, error_response, current_utc_datetime
 from app.core.security import authenticate_request
-from app.services.contact_service import fetch_contacts, count_contacts, fetch_contact_by_id
+from app.services.contact_service import (
+    fetch_contacts,
+    count_contacts,
+    fetch_contact_by_id,
+    CONTACT_SEARCH_FIELDS,
+)
 
 router = APIRouter()
+
+
+RESERVED_QUERY_PARAMS = {
+    "account_id",
+    "account_search",
+    "associated_accounts_only",
+    "search",
+    "search_by",
+    "searchby",
+    "limit",
+    "offset",
+    "filters",
+}
+
+
+def parse_filters(filters: Optional[str]) -> List[Dict[str, Any]]:
+    if not filters:
+        return []
+
+    try:
+        parsed = json.loads(filters)
+
+        if isinstance(parsed, list):
+            return parsed
+
+        return []
+
+    except Exception:
+        return []
+
+
+def parse_multi_field_filters(request: Request) -> List[Dict[str, Any]]:
+    filters: List[Dict[str, Any]] = []
+
+    for key in request.query_params.keys():
+        clean_key = str(key or "").strip().lower()
+
+        if not clean_key:
+            continue
+
+        if clean_key in RESERVED_QUERY_PARAMS:
+            continue
+
+        if clean_key not in CONTACT_SEARCH_FIELDS:
+            continue
+
+        values = request.query_params.getlist(clean_key)
+
+        cleaned_values: List[str] = []
+
+        for value in values:
+            if value is None:
+                continue
+
+            value_string = str(value).strip()
+
+            if not value_string:
+                continue
+
+            if "," in value_string:
+                cleaned_values.extend(
+                    [
+                        item.strip()
+                        for item in value_string.split(",")
+                        if item.strip()
+                    ]
+                )
+            else:
+                cleaned_values.append(value_string)
+
+        if not cleaned_values:
+            continue
+
+        if len(cleaned_values) > 1:
+            filters.append(
+                {
+                    "field": clean_key,
+                    "operator": "in",
+                    "value": cleaned_values,
+                }
+            )
+            continue
+
+        single_value = cleaned_values[0]
+
+        if clean_key in [
+            "contact_type",
+            "source",
+            "owner",
+            "created_by",
+            "modified_by",
+        ]:
+            filters.append(
+                {
+                    "field": clean_key,
+                    "operator": "eq",
+                    "value": single_value,
+                }
+            )
+        else:
+            filters.append(
+                {
+                    "field": clean_key,
+                    "operator": "like",
+                    "value": single_value,
+                }
+            )
+
+    return filters
 
 
 @router.get("/contacts")
@@ -21,9 +136,15 @@ def get_contacts(
     search_by: Optional[str] = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    filters: Optional[str] = Query(default=None),
 ):
     try:
         client_database = auth_context.get("client_database")
+
+        parsed_filters = parse_filters(filters)
+        query_filters = parse_multi_field_filters(request)
+
+        final_filters = parsed_filters + query_filters
 
         contacts = fetch_contacts(
             client_database=client_database,
@@ -34,6 +155,7 @@ def get_contacts(
             search_by=search_by,
             limit=limit,
             offset=offset,
+            filters=final_filters,
         )
 
         total_records = count_contacts(
@@ -43,6 +165,7 @@ def get_contacts(
             associated_accounts_only=associated_accounts_only,
             search=search,
             search_by=search_by,
+            filters=final_filters,
         )
 
         return success_response(
@@ -54,6 +177,7 @@ def get_contacts(
                 "associated_accounts_only": associated_accounts_only,
                 "search": search,
                 "search_by": search_by,
+                "applied_filters": final_filters,
                 "limit": limit,
                 "offset": offset,
                 "record_count": len(contacts),
@@ -76,7 +200,8 @@ def get_contacts(
                 },
             ),
         )
-    
+
+
 @router.get("/contacts/{contact_id}")
 def get_contact_detail(
     contact_id: int,

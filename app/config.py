@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "local"
     APP_DEBUG: bool = True
     API_VERSION: str = "v1"
+    API_ENV: str = "production"
 
     MASTER_DB_HOST: str = "localhost"
     MASTER_DB_PORT: int = 3306

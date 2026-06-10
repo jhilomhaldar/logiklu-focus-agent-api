@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import settings
 from app.db.client import get_client_connection, validate_database_name
@@ -44,6 +44,7 @@ MULTI_VALUE_CONTACT_SEARCH_FIELDS = {
     "modified_by",
 }
 
+
 def split_contact_search_values(value: Any) -> List[str]:
     if value is None:
         return []
@@ -58,6 +59,7 @@ def split_contact_search_values(value: Any) -> List[str]:
 
     try:
         import json
+
         parsed = json.loads(value_string)
 
         if isinstance(parsed, list):
@@ -92,6 +94,7 @@ def normalize_numeric_values(values: List[str]) -> List[int]:
             pass
 
     return numeric_values
+
 
 def build_contact_search_condition(
     search: Optional[str],
@@ -185,6 +188,95 @@ def build_contact_search_condition(
     where_clauses.append("(" + " OR ".join(column_conditions) + ")")
 
 
+def build_contact_dynamic_filters(
+    filters: Optional[List[Dict[str, Any]]],
+) -> Tuple[List[str], List[Any]]:
+    where_clauses: List[str] = []
+    params: List[Any] = []
+
+    if not filters:
+        return where_clauses, params
+
+    for item in filters:
+        field = str(item.get("field") or "").strip().lower()
+        operator = str(item.get("operator") or "eq").strip().lower()
+        value = item.get("value")
+
+        if field not in CONTACT_SEARCH_FIELDS:
+            continue
+
+        columns = CONTACT_SEARCH_FIELDS[field]
+
+        if not columns:
+            continue
+
+        # Name searches first_name, last_name, and full name
+        if field == "name":
+            if operator == "like":
+                where_clauses.append(
+                    """
+                    (
+                        cc.first_name LIKE %s
+                        OR cc.last_name LIKE %s
+                        OR CONCAT(COALESCE(cc.first_name, ''), ' ', COALESCE(cc.last_name, '')) LIKE %s
+                    )
+                    """
+                )
+                params.extend([f"%{value}%", f"%{value}%", f"%{value}%"])
+
+            elif operator == "eq":
+                where_clauses.append(
+                    """
+                    CONCAT(COALESCE(cc.first_name, ''), ' ', COALESCE(cc.last_name, '')) = %s
+                    """
+                )
+                params.append(value)
+
+            continue
+
+        column = columns[0]
+
+        if operator == "eq":
+            where_clauses.append(f"{column} = %s")
+            params.append(value)
+
+        elif operator == "neq":
+            where_clauses.append(f"{column} <> %s")
+            params.append(value)
+
+        elif operator == "like":
+            column_conditions = []
+
+            for col in columns:
+                column_conditions.append(f"{col} LIKE %s")
+                params.append(f"%{value}%")
+
+            where_clauses.append("(" + " OR ".join(column_conditions) + ")")
+
+        elif operator == "starts_with":
+            where_clauses.append(f"{column} LIKE %s")
+            params.append(f"{value}%")
+
+        elif operator == "ends_with":
+            where_clauses.append(f"{column} LIKE %s")
+            params.append(f"%{value}")
+
+        elif operator == "in" and isinstance(value, list) and value:
+            placeholders = ",".join(["%s"] * len(value))
+            where_clauses.append(f"{column} IN ({placeholders})")
+            params.extend(value)
+
+        elif operator == "from":
+            where_clauses.append(f"{column} >= %s")
+            params.append(value)
+
+        elif operator == "to":
+            where_clauses.append(f"{column} <= %s")
+            params.append(value)
+
+    return where_clauses, params
+
+
 def normalize_contact_with_account(row: Dict[str, Any]) -> Dict[str, Any]:
     contact = normalize_contact_row(row)
 
@@ -223,21 +315,16 @@ def normalize_contact_with_account(row: Dict[str, Any]) -> Dict[str, Any]:
         "project_startdate": row.get("account_project_startdate"),
         "project_enddate": row.get("account_project_enddate"),
         "source_details": row.get("account_source_details"),
-
         "owner_first_name": row.get("account_owner_first_name"),
         "owner_last_name": row.get("account_owner_last_name"),
         "owner_email": row.get("account_owner_email"),
-
         "created_by_first_name": row.get("account_created_by_first_name"),
         "created_by_last_name": row.get("account_created_by_last_name"),
         "created_by_email": row.get("account_created_by_email"),
-
         "created_date": row.get("account_created_date"),
-
         "modified_by_first_name": row.get("account_modified_by_first_name"),
         "modified_by_last_name": row.get("account_modified_by_last_name"),
         "modified_by_email": row.get("account_modified_by_email"),
-
         "modified_date": row.get("account_modified_date"),
     }
 
@@ -302,6 +389,7 @@ def fetch_contacts(
     associated_accounts_only: bool = False,
     search: Optional[str] = None,
     search_by: Optional[str] = None,
+    filters: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     connection = None
     master_database = validate_database_name(settings.MASTER_DB_NAME)
@@ -341,11 +429,13 @@ def fetch_contacts(
         except Exception:
             account_search_id = 0
 
-        params.extend([
-            account_search_id,
-            account_search_like,
-            account_search_like,
-        ])
+        params.extend(
+            [
+                account_search_id,
+                account_search_like,
+                account_search_like,
+            ]
+        )
 
     build_contact_search_condition(
         search=search,
@@ -353,6 +443,10 @@ def fetch_contacts(
         where_clauses=where_clauses,
         params=params,
     )
+
+    dynamic_where, dynamic_params = build_contact_dynamic_filters(filters)
+    where_clauses.extend(dynamic_where)
+    params.extend(dynamic_params)
 
     where_sql = " AND ".join(where_clauses)
 
@@ -523,6 +617,7 @@ def count_contacts(
     associated_accounts_only: bool = False,
     search: Optional[str] = None,
     search_by: Optional[str] = None,
+    filters: Optional[List[Dict[str, Any]]] = None,
 ) -> int:
     connection = None
 
@@ -558,11 +653,13 @@ def count_contacts(
         except Exception:
             account_search_id = 0
 
-        params.extend([
-            account_search_id,
-            account_search_like,
-            account_search_like,
-        ])
+        params.extend(
+            [
+                account_search_id,
+                account_search_like,
+                account_search_like,
+            ]
+        )
 
     build_contact_search_condition(
         search=search,
@@ -570,6 +667,10 @@ def count_contacts(
         where_clauses=where_clauses,
         params=params,
     )
+
+    dynamic_where, dynamic_params = build_contact_dynamic_filters(filters)
+    where_clauses.extend(dynamic_where)
+    params.extend(dynamic_params)
 
     where_sql = " AND ".join(where_clauses)
 
@@ -595,6 +696,7 @@ def count_contacts(
     finally:
         if connection:
             connection.close()
+
 
 def fetch_contact_by_id(
     client_database: str,

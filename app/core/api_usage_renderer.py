@@ -2,6 +2,7 @@ import html
 import json
 from typing import Any, Dict, List
 from urllib.parse import urlencode
+from app.config import settings
 
 
 def esc(value: Any) -> str:
@@ -588,7 +589,43 @@ def render_parameters(endpoint: Dict[str, Any]) -> str:
         </tbody>
     </table>
     """
+def render_multi_field_filters(endpoint: Dict[str, Any]) -> str:
+    filters = endpoint.get("multi_field_filters", [])
 
+    if not filters:
+        return ""
+
+    rows = ""
+
+    for item in filters:
+        rows += f"""
+        <tr>
+            <td><span class="param-name">{esc(item.get("name"))}</span></td>
+            <td><code>{esc(item.get("example"))}</code></td>
+            <td class="param-desc">{esc(item.get("description"))}</td>
+        </tr>
+        """
+
+    return f"""
+    <h4 class="sub-title">Multi-field Filter Options</h4>
+    <p class="section-desc small-desc">
+        You can filter list APIs using direct query parameters. Multiple filters are combined using AND logic.
+        Example: <code>?country=India&amp;industry=Software</code>
+    </p>
+
+    <table class="params-table">
+        <thead>
+            <tr>
+                <th>Filter Field</th>
+                <th>Example Value</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {rows}
+        </tbody>
+    </table>
+    """
 
 def render_search_by_options(endpoint: Dict[str, Any]) -> str:
     options = endpoint.get("search_by_options", [])
@@ -807,8 +844,9 @@ def render_endpoint_card(section_id: str, endpoint: Dict[str, Any], base_url: st
                 {render_examples(endpoint, base_url)}
             </div>
 
-            <div id="{esc(endpoint_id)}-params" class="endpoint-tab-content">
+           <div id="{esc(endpoint_id)}-params" class="endpoint-tab-content">
                 {render_parameters(endpoint)}
+                {render_multi_field_filters(endpoint)}
                 {render_search_by_options(endpoint)}
             </div>
 
@@ -867,9 +905,11 @@ def render_sidebar(data: Dict[str, Any]) -> str:
         <div class="nav-group">
             <div class="nav-group-label">Getting Started</div>
             <a class="nav-item active" onclick="scrollToSection('overview')">Overview</a>
+            <a class="nav-item" onclick="scrollToSection('environments')">Environments</a>
             <a class="nav-item" onclick="scrollToSection('authentication')">Authentication</a>
             <a class="nav-item" onclick="scrollToSection('response-format')">Response Format</a>
             <a class="nav-item" onclick="scrollToSection('quick-start')">Quick Start</a>
+            <a class="nav-item" onclick="scrollToSection('api-logging')">API Logging</a>
             <a class="nav-item" onclick="scrollToSection('errors')">Error Handling</a>
         </div>
 
@@ -926,10 +966,108 @@ def render_error_codes(data: Dict[str, Any]) -> str:
 
     return rows
 
+def get_current_environment_name() -> str:
+    api_env = str(getattr(settings, "API_ENV", "production") or "production").strip().lower()
+
+    if api_env == "sandbox":
+        return "Sandbox"
+
+    return "Production"
+
+
+def get_current_base_url(data: Dict[str, Any]) -> str:
+    api_env = str(getattr(settings, "API_ENV", "production") or "production").strip().lower()
+
+    if api_env == "sandbox":
+        return data.get("sandbox_base_url") or data.get("base_url") or ""
+
+    return data.get("base_url") or ""
+
+def render_environments(data: Dict[str, Any]) -> str:
+    environment_name = get_current_environment_name()
+    base_url = get_current_base_url(data)
+
+    description = "Use this sandbox environment for testing API integration before production release."
+
+    if environment_name == "Production":
+        description = "Use this production environment for live API calls."
+
+    return f"""
+    <div class="section" id="environments">
+        <div class="section-header">
+            <span class="section-num">00</span>
+            <h2 class="section-title">Environment</h2>
+        </div>
+
+        <p class="section-desc">
+            This documentation page shows the base URL for the current API environment only.
+        </p>
+
+        <div class="base-url-box">
+            <span class="base-url-label">{esc(environment_name)} API</span>
+            <span class="base-url-value">{esc(base_url)}</span>
+        </div>
+
+        <div class="info-box info-note">
+            <span class="info-icon">ℹ</span>
+            <div>{esc(description)}</div>
+        </div>
+    </div>
+    """
+def render_logging_section(data: Dict[str, Any]) -> str:
+    logging_data = data.get("logging", {})
+
+    if not logging_data:
+        return ""
+
+    fields = ""
+
+    for field in logging_data.get("logged_fields", []):
+        fields += f"""
+        <tr>
+            <td><span class="param-name">{esc(field)}</span></td>
+            <td class="param-desc">Stored internally for audit and troubleshooting.</td>
+        </tr>
+        """
+
+    return f"""
+    <div class="section" id="api-logging">
+        <div class="section-header">
+            <span class="section-num">98</span>
+            <h2 class="section-title">{esc(logging_data.get("title"))}</h2>
+        </div>
+
+        <p class="section-desc">
+            {esc(logging_data.get("description"))}
+        </p>
+
+        <div class="info-box info-note">
+            <span class="info-icon">ℹ</span>
+            <div>
+                Sandbox logs are stored separately from production logs.
+                Sandbox table: <code>{esc(logging_data.get("sandbox_table"))}</code>.
+                Production table: <code>{esc(logging_data.get("production_table"))}</code>.
+            </div>
+        </div>
+
+        <table class="params-table">
+            <thead>
+                <tr>
+                    <th>Logged Field</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {fields}
+            </tbody>
+        </table>
+    </div>
+    """
+
 
 def render_usage_page(data: Dict[str, Any]) -> str:
-    base_url = data.get("base_url", "")
-    first_example_url = build_url(base_url, "/accounts", {"limit": 20, "offset": 0})
+    base_url = get_current_base_url(data)
+    first_example_url = build_url(base_url, "/api/v1/accounts", {"limit": 20, "offset": 0})
     first_example_code = generate_code_examples("GET", first_example_url)
 
     template = """
@@ -1858,7 +1996,7 @@ pre code {
         <p class="hero-sub">{{SUBTITLE}}</p>
 
         <div class="hero-meta">
-            <div class="hero-badge">Base URL <span>{{BASE_URL}}</span></div>
+            <div class="hero-badge">{{ENV_NAME}} URL <span>{{BASE_URL}}</span></div>
             <div class="hero-badge">Format <span>JSON</span></div>
             <div class="hero-badge">Auth <span>X-API-KEY</span></div>
             <div class="hero-badge">TLS <span>Required</span></div>
@@ -1866,6 +2004,8 @@ pre code {
     </div>
 
     <div class="content">
+
+         {{ENVIRONMENTS}}
 
         <div class="section" id="authentication">
             <div class="section-header">
@@ -1935,6 +2075,8 @@ pre code {
         </div>
 
         {{SECTIONS}}
+
+        {{LOGGING_SECTION}}
 
         <div class="section" id="errors">
             <div class="section-header">
@@ -2183,12 +2325,15 @@ async function sendTryOutRequest(button) {
     page = page.replace("{{TITLE}}", esc(data.get("title")))
     page = page.replace("{{SUBTITLE}}", esc(data.get("subtitle")))
     page = page.replace("{{BASE_URL}}", esc(base_url))
+    page = page.replace("{{ENV_NAME}}", esc(get_current_environment_name()))
     page = page.replace("{{SIDEBAR}}", render_sidebar(data))
     page = page.replace("{{AUTH_CODE}}", render_code_block("X-API-KEY: YOUR_API_KEY\nContent-Type: application/json", "HTTP Headers"))
     page = page.replace("{{SUCCESS_CODE}}", render_code_block(json.dumps(data.get("response_format", {}).get("success", {}), indent=2), "JSON · Success Response"))
     page = page.replace("{{ERROR_CODE}}", render_code_block(json.dumps(data.get("response_format", {}).get("error", {}), indent=2), "JSON · Error Response"))
     page = page.replace("{{QUICK_START_CODE}}", render_language_tabs("quick-start-example", first_example_code))
+    page = page.replace("{{ENVIRONMENTS}}", render_environments(data))
     page = page.replace("{{SECTIONS}}", render_sections(data))
+    page = page.replace("{{LOGGING_SECTION}}", render_logging_section(data))
     page = page.replace("{{ERROR_CODES}}", render_error_codes(data))
 
     return page
