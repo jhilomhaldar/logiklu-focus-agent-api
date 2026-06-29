@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import health, auth_test, accounts, contacts, usage
+from app.api.v1.endpoints import health, auth_test, accounts, contacts, usage, focus_company_intelligence
+
 
 api_router = APIRouter()
 
@@ -27,4 +28,9 @@ api_router.include_router(
 api_router.include_router(
     usage.router,
     tags=["Usage"]
+)
+
+api_router.include_router(
+    focus_company_intelligence.router,
+    tags=["Focus Intelligence"]
 )
