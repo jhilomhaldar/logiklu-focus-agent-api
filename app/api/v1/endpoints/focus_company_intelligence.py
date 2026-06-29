@@ -39,6 +39,9 @@ def get_demo_focus_company_intelligence(
                 data={
                     "lead_id": lead_id,
                     "client_database": client_database,
+                    "api_environment": auth_context.get("api_environment"),
+                    "api_client_id": auth_context.get("api_client_id"),
+                    "domain_id": auth_context.get("domain_id"),
                     "timestamp": current_utc_datetime(),
                 },
             )
@@ -51,11 +54,14 @@ def get_demo_focus_company_intelligence(
 
         response_data = success_response(
             message="Focus company intelligence fetched successfully",
-            meta={
+           meta={
                 "generated_at": current_utc_datetime(),
                 "lead_id": lead_id,
+                "mode": "protected",
                 "client_database": client_database,
-                "mode": "demo",
+                "api_environment": auth_context.get("api_environment"),
+                "api_client_id": auth_context.get("api_client_id"),
+                "domain_id": auth_context.get("domain_id"),
             },
             data={
                 "company_intelligence": intelligence,
