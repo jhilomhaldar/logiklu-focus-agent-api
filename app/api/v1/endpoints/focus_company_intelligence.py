@@ -20,7 +20,6 @@ def get_demo_focus_company_intelligence(
 ):
     """
     Public browser-openable demo endpoint.
-
     No API key required.
     Database name is passed in URL.
     Returns pretty JSON for browser readability.
@@ -39,9 +38,7 @@ def get_demo_focus_company_intelligence(
                 data={
                     "lead_id": lead_id,
                     "client_database": client_database,
-                    "api_environment": auth_context.get("api_environment"),
-                    "api_client_id": auth_context.get("api_client_id"),
-                    "domain_id": auth_context.get("domain_id"),
+                    "mode": "demo",
                     "timestamp": current_utc_datetime(),
                 },
             )
@@ -54,14 +51,11 @@ def get_demo_focus_company_intelligence(
 
         response_data = success_response(
             message="Focus company intelligence fetched successfully",
-           meta={
+            meta={
                 "generated_at": current_utc_datetime(),
                 "lead_id": lead_id,
-                "mode": "protected",
                 "client_database": client_database,
-                "api_environment": auth_context.get("api_environment"),
-                "api_client_id": auth_context.get("api_client_id"),
-                "domain_id": auth_context.get("domain_id"),
+                "mode": "demo",
             },
             data={
                 "company_intelligence": intelligence,
@@ -99,7 +93,6 @@ def get_focus_company_intelligence(
 ):
     """
     Protected actual API endpoint.
-
     Requires X-API-KEY authentication.
     Uses authenticated client's database.
     """
@@ -120,6 +113,12 @@ def get_focus_company_intelligence(
                     error_code="FOCUS_COMPANY_INTELLIGENCE_NOT_FOUND",
                     data={
                         "lead_id": lead_id,
+                        "client_database": client_database,
+                        "api_environment": auth_context.get("api_environment"),
+                        "api_client_id": auth_context.get("api_client_id"),
+                        "domain_id": auth_context.get("domain_id"),
+                        "account_name": auth_context.get("account_name"),
+                        "websitename": auth_context.get("websitename"),
                         "timestamp": current_utc_datetime(),
                     },
                 ),
@@ -131,6 +130,12 @@ def get_focus_company_intelligence(
                 "generated_at": current_utc_datetime(),
                 "lead_id": lead_id,
                 "mode": "protected",
+                "client_database": client_database,
+                "api_environment": auth_context.get("api_environment"),
+                "api_client_id": auth_context.get("api_client_id"),
+                "domain_id": auth_context.get("domain_id"),
+                "account_name": auth_context.get("account_name"),
+                "websitename": auth_context.get("websitename"),
             },
             data={
                 "company_intelligence": intelligence,
