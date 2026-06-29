@@ -234,3 +234,5 @@ logs/
 Thumbs.db
 
 docker-compose.override.yml
+
+datajson/
