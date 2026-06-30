@@ -84,9 +84,45 @@ def format_datetime(value: Any) -> Optional[str]:
         return None
 
     if isinstance(value, datetime):
-        return value.isoformat()
+        return value.isoformat(sep=" ")
 
     return str(value)
+
+
+def parse_datetime_loose(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        return value
+
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+
+    value_str = str(value).strip()
+
+    if not value_str:
+        return None
+
+    value_str = value_str.replace("Z", "").replace("T", " ")
+
+    known_formats = [
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+    ]
+
+    for fmt in known_formats:
+        try:
+            return datetime.strptime(value_str, fmt)
+        except Exception:
+            pass
+
+    try:
+        return datetime.fromisoformat(value_str)
+    except Exception:
+        return None
 
 
 def first_non_empty(*values: Any) -> Any:
@@ -109,34 +145,149 @@ def normalize_json_list(value: Any) -> list:
     return []
 
 
-def normalize_first_last_visit(first_visit: Any, last_visit: Any) -> tuple:
-    """
-    Ensures first_visit_date is never after last_visit_date.
-    If DB values are reversed, swap them at API output level.
-    """
+def extract_journey_days(journey_json: Any) -> list:
+    decoded = safe_json_decode(journey_json, {})
 
+    if isinstance(decoded, dict):
+        days = decoded.get("days", [])
+        return days if isinstance(days, list) else []
+
+    if isinstance(decoded, list):
+        return decoded
+
+    return []
+
+
+def normalize_first_last_visit(first_visit: Any, last_visit: Any) -> tuple:
     if not first_visit or not last_visit:
         return first_visit, last_visit
 
-    try:
-        first_dt = (
-            first_visit
-            if isinstance(first_visit, datetime)
-            else datetime.fromisoformat(str(first_visit))
-        )
-        last_dt = (
-            last_visit
-            if isinstance(last_visit, datetime)
-            else datetime.fromisoformat(str(last_visit))
-        )
+    first_dt = parse_datetime_loose(first_visit)
+    last_dt = parse_datetime_loose(last_visit)
 
-        if first_dt > last_dt:
-            return last_visit, first_visit
-
-    except Exception:
-        pass
+    if first_dt and last_dt and first_dt > last_dt:
+        return last_visit, first_visit
 
     return first_visit, last_visit
+
+
+def get_page_url(page: Dict[str, Any]) -> Any:
+    return first_non_empty(
+        page.get("page_url"),
+        page.get("url"),
+        page.get("page_link"),
+        page.get("link"),
+    )
+
+
+def get_page_title(page: Dict[str, Any]) -> Any:
+    return first_non_empty(
+        page.get("page_title"),
+        page.get("title"),
+        page.get("name"),
+    )
+
+
+def get_page_visit_time(page: Dict[str, Any]) -> Any:
+    return first_non_empty(
+        page.get("visited_at"),
+        page.get("visit_at"),
+        page.get("visited_datetime"),
+        page.get("visit_datetime"),
+        page.get("track_datetime"),
+        page.get("track_date_time"),
+        page.get("created_at"),
+        page.get("created_date"),
+        page.get("time"),
+        page.get("datetime"),
+    )
+
+
+def get_action_type(action: Dict[str, Any]) -> str:
+    raw_type = first_non_empty(
+        action.get("action_type"),
+        action.get("type"),
+        action.get("event_type"),
+        action.get("event"),
+        action.get("label"),
+        action.get("name"),
+        action.get("action"),
+        action.get("title"),
+        "",
+    )
+
+    return str(raw_type or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def get_action_time(action: Dict[str, Any]) -> Any:
+    return first_non_empty(
+        action.get("action_time"),
+        action.get("action_at"),
+        action.get("created_at"),
+        action.get("created_date"),
+        action.get("visited_at"),
+        action.get("visit_datetime"),
+        action.get("track_datetime"),
+        action.get("track_date_time"),
+        action.get("time"),
+        action.get("datetime"),
+        action.get("timestamp"),
+    )
+
+
+def classify_action(action: Dict[str, Any]) -> str:
+    action_type = get_action_type(action)
+
+    action_text = " ".join(
+        [
+            str(action.get("label") or ""),
+            str(action.get("title") or ""),
+            str(action.get("name") or ""),
+            str(action.get("summary") or ""),
+            str(action.get("description") or ""),
+            str(action.get("text") or ""),
+            str(action.get("action") or ""),
+            str(action.get("action_type") or ""),
+            str(action.get("type") or ""),
+        ]
+    ).lower()
+
+    combined = f"{action_type} {action_text}"
+
+    if "lead_form" in combined or "leadform" in combined or "lead form" in combined:
+        return "lead_form_submission"
+
+    if "inner_form" in combined or "innerform" in combined or "inner form" in combined:
+        return "inner_form_submission"
+
+    if "external" in combined or "outbound" in combined:
+        return "external_link_click"
+
+    if "asset" in combined or "download" in combined or "pdf" in combined:
+        return "asset_download"
+
+    if "video" in combined or "youtube" in combined:
+        return "video_view"
+
+    if "form" in combined and "submit" in combined:
+        return "form_submission"
+
+    if "link" in combined and "click" in combined:
+        return "external_link_click"
+
+    return "other"
+
+
+def get_page_actions(page: Dict[str, Any]) -> List[Dict[str, Any]]:
+    actions = page.get("actions", [])
+
+    if isinstance(actions, list):
+        return [action for action in actions if isinstance(action, dict)]
+
+    if isinstance(actions, dict):
+        return [actions]
+
+    return []
 
 
 def build_where_clause(
@@ -214,11 +365,6 @@ def fetch_focus_account_intelligence_list(
     is_shortlisted: Optional[str] = None,
     include_journey: bool = False,
 ) -> Dict[str, Any]:
-    """
-    List Focus accounts with intelligence data.
-    Minimum page size is 10.
-    """
-
     connection = None
 
     page = max(page, 1)
@@ -235,24 +381,6 @@ def fetch_focus_account_intelligence_list(
             is_shortlisted=is_shortlisted,
         )
 
-        journey_select = ""
-        journey_join = ""
-
-        if include_journey:
-            journey_select = """
-                fj.contacts,
-                fj.journey_timeline_json,
-                fj.first_visit_date,
-                fj.last_visit_date,
-                fj.total_visits,
-                fj.total_time_spent,
-            """
-
-            journey_join = """
-                LEFT JOIN lk_focus_report_company_journey fj
-                    ON fj.report_company_log_id = fcl.report_company_log_id
-            """
-
         count_sql = f"""
             SELECT COUNT(*) AS total_records
             FROM lk_focus_report_master frm
@@ -263,7 +391,8 @@ def fetch_focus_account_intelligence_list(
             LEFT JOIN lk_lead_master lm
                 ON lm.lead_id = fcl.lead_id
 
-            {journey_join}
+            LEFT JOIN lk_focus_report_company_journey fj
+                ON fj.report_company_log_id = fcl.report_company_log_id
 
             WHERE {where_clause}
         """
@@ -323,7 +452,12 @@ def fetch_focus_account_intelligence_list(
                 fcl.account_summary_short,
                 fcl.created_date AS company_score_created_date,
 
-                {journey_select}
+                fj.contacts,
+                fj.journey_timeline_json,
+                fj.first_visit_date,
+                fj.last_visit_date,
+                fj.total_visits,
+                fj.total_time_spent,
 
                 lm.lead_name,
                 lm.website AS lead_website,
@@ -349,7 +483,8 @@ def fetch_focus_account_intelligence_list(
             LEFT JOIN lk_lead_master lm
                 ON lm.lead_id = fcl.lead_id
 
-            {journey_join}
+            LEFT JOIN lk_focus_report_company_journey fj
+                ON fj.report_company_log_id = fcl.report_company_log_id
 
             WHERE {where_clause}
 
@@ -405,36 +540,26 @@ def build_focus_account_intelligence_item(
         or {}
     )
 
-    top_evidence_facts = build_top_evidence_facts(row)
+    journey_days = extract_journey_days(row.get("journey_timeline_json"))
 
-    track_ids = safe_json_decode(row.get("track_ids"), [])
-    track_lead_ids = safe_json_decode(row.get("track_lead_ids"), [])
-
-    journey_days = []
-    first_visit_date = None
-    last_visit_date = None
-    contacts = []
-
-    if include_journey:
-        journey_json = safe_json_decode(row.get("journey_timeline_json"), {})
-
-        if isinstance(journey_json, dict):
-            journey_days = journey_json.get("days", [])
-        elif isinstance(journey_json, list):
-            journey_days = journey_json
-
-        first_visit_date, last_visit_date = normalize_first_last_visit(
-            row.get("first_visit_date"),
-            row.get("last_visit_date"),
-        )
-
-        contacts = safe_json_decode(row.get("contacts"), [])
+    db_first_visit_date, db_last_visit_date = normalize_first_last_visit(
+        row.get("first_visit_date"),
+        row.get("last_visit_date"),
+    )
 
     signal_summary = build_signal_summary(
         row=row,
         journey_days=journey_days,
-        normalized_last_visit_date=last_visit_date,
+        normalized_first_visit_date=db_first_visit_date,
+        normalized_last_visit_date=db_last_visit_date,
     )
+
+    track_ids = safe_json_decode(row.get("track_ids"), [])
+    track_lead_ids = safe_json_decode(row.get("track_lead_ids"), [])
+    contacts = safe_json_decode(row.get("contacts"), [])
+
+    first_visit_at = signal_summary.get("first_activity_at") or format_datetime(db_first_visit_date)
+    last_visit_at = signal_summary.get("last_activity_at") or format_datetime(db_last_visit_date)
 
     item = {
         "schema_version": SCHEMA_VERSION,
@@ -500,7 +625,7 @@ def build_focus_account_intelligence_item(
         },
         "score_explanation": score_explanation,
         "signal_summary": signal_summary,
-        "top_evidence_facts": top_evidence_facts,
+        "top_evidence_facts": build_top_evidence_facts(row, signal_summary),
         "focus_status": {
             "is_shortlisted": row.get("is_shortlisted"),
             "shortlisted_rank": row.get("shortlisted_rank"),
@@ -520,10 +645,12 @@ def build_focus_account_intelligence_item(
 
     if include_journey:
         item["journey_detail"] = {
-            "first_visit_date": format_datetime(first_visit_date),
-            "last_visit_date": format_datetime(last_visit_date),
-            "total_visits": int(row.get("total_visits") or 0),
-            "total_time_spent_seconds": int(row.get("total_time_spent") or 0),
+            "first_visit_date": first_visit_at,
+            "first_visit_at": first_visit_at,
+            "last_visit_date": last_visit_at,
+            "last_visit_at": last_visit_at,
+            "total_visits": signal_summary.get("session_count") or int(row.get("total_visits") or 0),
+            "total_time_spent_seconds": signal_summary.get("total_time_spent_seconds") or int(row.get("total_time_spent") or 0),
             "days": journey_days,
         }
 
@@ -537,6 +664,7 @@ def build_focus_account_intelligence_item(
 def build_signal_summary(
     row: Dict[str, Any],
     journey_days: list,
+    normalized_first_visit_date: Any = None,
     normalized_last_visit_date: Any = None,
 ) -> Dict[str, Any]:
     action_taken = safe_json_decode(row.get("action_taken"), {})
@@ -546,17 +674,44 @@ def build_signal_summary(
 
     session_count = 0
     page_view_count = 0
+    total_action_count = 0
+
+    asset_download_count = 0
+    external_link_click_count = 0
+    lead_form_submission_count = 0
+    inner_form_submission_count = 0
+    generic_form_submission_count = 0
+    video_view_count = 0
+
     distinct_visit_days = set()
+    unique_pages = set()
     top_pages_map = {}
+
+    first_activity_dt = None
+    last_activity_dt = None
+
+    def register_activity_time(value: Any):
+        nonlocal first_activity_dt, last_activity_dt
+
+        activity_dt = parse_datetime_loose(value)
+
+        if not activity_dt:
+            return
+
+        if first_activity_dt is None or activity_dt < first_activity_dt:
+            first_activity_dt = activity_dt
+
+        if last_activity_dt is None or activity_dt > last_activity_dt:
+            last_activity_dt = activity_dt
 
     for day in journey_days:
         if not isinstance(day, dict):
             continue
 
-        day_date = day.get("date")
+        day_date = first_non_empty(day.get("date"), day.get("track_date"))
 
         if day_date:
-            distinct_visit_days.add(day_date)
+            distinct_visit_days.add(str(day_date))
 
         sessions = day.get("sessions", [])
 
@@ -569,6 +724,23 @@ def build_signal_summary(
 
             session_count += 1
 
+            register_activity_time(
+                first_non_empty(
+                    session.get("started_at"),
+                    session.get("start_time"),
+                    session.get("visited_at"),
+                    session.get("visit_datetime"),
+                )
+            )
+
+            register_activity_time(
+                first_non_empty(
+                    session.get("ended_at"),
+                    session.get("end_time"),
+                    session.get("last_activity_at"),
+                )
+            )
+
             pages = session.get("pages", [])
 
             if not isinstance(pages, list):
@@ -580,15 +752,22 @@ def build_signal_summary(
 
                 page_view_count += 1
 
-                page_url = page.get("page_url") or page.get("url")
-                page_title = page.get("page_title") or page.get("title")
+                page_url = get_page_url(page)
+                page_title = get_page_title(page)
+                page_visit_time = get_page_visit_time(page)
+
+                register_activity_time(page_visit_time)
+
                 time_spent = to_int(
                     page.get("time_spent_seconds")
                     or page.get("time_spent")
+                    or page.get("duration")
                     or 0
                 )
 
                 if page_url:
+                    unique_pages.add(str(page_url))
+
                     if page_url not in top_pages_map:
                         top_pages_map[page_url] = {
                             "page_url": page_url,
@@ -600,6 +779,62 @@ def build_signal_summary(
                     top_pages_map[page_url]["visit_count"] += 1
                     top_pages_map[page_url]["total_time_spent_seconds"] += time_spent
 
+                actions = get_page_actions(page)
+
+                for action in actions:
+                    total_action_count += 1
+
+                    register_activity_time(get_action_time(action))
+
+                    action_class = classify_action(action)
+
+                    if action_class == "asset_download":
+                        asset_download_count += 1
+                    elif action_class == "external_link_click":
+                        external_link_click_count += 1
+                    elif action_class == "lead_form_submission":
+                        lead_form_submission_count += 1
+                    elif action_class == "inner_form_submission":
+                        inner_form_submission_count += 1
+                    elif action_class == "form_submission":
+                        generic_form_submission_count += 1
+                    elif action_class == "video_view":
+                        video_view_count += 1
+
+    journey_has_data = bool(journey_days)
+
+    if not journey_has_data:
+        session_count = to_int(action_taken.get("total_visits"))
+        page_view_count = to_int(
+            action_taken.get("page_view_count")
+            or action_taken.get("page_views")
+            or action_taken.get("page_visited")
+        )
+        asset_download_count = to_int(action_taken.get("asset_downloaded"))
+        external_link_click_count = to_int(action_taken.get("external_link_click"))
+        lead_form_submission_count = to_int(
+            action_taken.get("lead_form_submission")
+            or action_taken.get("leadform_submission")
+        )
+        inner_form_submission_count = to_int(
+            action_taken.get("inner_form_submission")
+            or action_taken.get("innerform_submission")
+        )
+        generic_form_submission_count = to_int(action_taken.get("form_submission"))
+        video_view_count = to_int(action_taken.get("video_view"))
+
+    form_submission_count = (
+        lead_form_submission_count
+        + inner_form_submission_count
+        + generic_form_submission_count
+    )
+
+    total_time_spent = to_int(
+        row.get("total_time_spent")
+        or action_taken.get("total_time_spent")
+        or 0
+    )
+
     top_pages = sorted(
         top_pages_map.values(),
         key=lambda item: (
@@ -609,59 +844,141 @@ def build_signal_summary(
         reverse=True,
     )[:5]
 
-    total_visits = to_int(
-        row.get("total_visits")
-        or action_taken.get("total_visits")
-        or session_count
-        or 0
+    first_activity_at = format_datetime(
+        first_activity_dt
+        or parse_datetime_loose(normalized_first_visit_date)
+        or parse_datetime_loose(row.get("first_visit_date"))
     )
 
-    total_time_spent = to_int(
-        row.get("total_time_spent")
-        or action_taken.get("total_time_spent")
-        or 0
-    )
-
-    page_view_count_final = to_int(
-        action_taken.get("page_visited")
-        or action_taken.get("page_view_count")
-        or page_view_count
-        or 0
+    last_activity_at = format_datetime(
+        last_activity_dt
+        or parse_datetime_loose(normalized_last_visit_date)
+        or parse_datetime_loose(row.get("last_visit_date"))
+        or parse_datetime_loose(row.get("last_visit_utc_datetime"))
     )
 
     return {
-        "session_count": total_visits,
-        "page_view_count": page_view_count_final,
+        "session_count": session_count,
+        "page_view_count": page_view_count,
+        "unique_page_count": len(unique_pages),
         "distinct_visit_days": len(distinct_visit_days),
+        "total_action_count": total_action_count,
         "total_time_spent_seconds": total_time_spent,
-        "last_activity_at": format_datetime(
-            normalized_last_visit_date
-            or row.get("last_visit_date")
-            or row.get("last_visit_utc_datetime")
-        ),
-        "asset_download_count": to_int(action_taken.get("asset_downloaded")),
-        "form_submission_count": to_int(
-            action_taken.get("form_submission")
-            or action_taken.get("lead_form_submission")
-            or action_taken.get("inner_form_submission")
-        ),
-        "external_link_click_count": to_int(action_taken.get("external_link_click")),
-        "video_view_count": to_int(action_taken.get("video_view")),
+        "first_activity_at": first_activity_at,
+        "last_activity_at": last_activity_at,
+        "asset_download_count": asset_download_count,
+        "external_link_click_count": external_link_click_count,
+        "lead_form_submission_count": lead_form_submission_count,
+        "inner_form_submission_count": inner_form_submission_count,
+        "form_submission_count": form_submission_count,
+        "video_view_count": video_view_count,
         "known_track_id_count": len(track_ids) if isinstance(track_ids, list) else 0,
         "known_track_lead_id_count": len(track_lead_ids) if isinstance(track_lead_ids, list) else 0,
         "top_pages": top_pages,
     }
 
 
-def build_top_evidence_facts(row: Dict[str, Any]) -> list:
-    top_signal_json = safe_json_decode(row.get("top_signal_json"), None)
+def build_top_evidence_facts(
+    row: Dict[str, Any],
+    signal_summary: Optional[Dict[str, Any]] = None,
+) -> list:
+    signal_summary = signal_summary or {}
+
     facts = []
 
+    lead_form_count = to_int(signal_summary.get("lead_form_submission_count"))
+    inner_form_count = to_int(signal_summary.get("inner_form_submission_count"))
+    asset_download_count = to_int(signal_summary.get("asset_download_count"))
+    external_link_click_count = to_int(signal_summary.get("external_link_click_count"))
+    video_view_count = to_int(signal_summary.get("video_view_count"))
+    distinct_visit_days = to_int(signal_summary.get("distinct_visit_days"))
+    page_view_count = to_int(signal_summary.get("page_view_count"))
+
+    if lead_form_count > 0:
+        facts.append(
+            {
+                "fact_type": "conversion",
+                "count": lead_form_count,
+                "summary": f"Submitted lead forms {lead_form_count} time{'s' if lead_form_count != 1 else ''}.",
+                "source": "journey_detail",
+                "contributes_to": "conversion",
+            }
+        )
+
+    if inner_form_count > 0:
+        facts.append(
+            {
+                "fact_type": "conversion",
+                "count": inner_form_count,
+                "summary": f"Submitted inner forms {inner_form_count} time{'s' if inner_form_count != 1 else ''}.",
+                "source": "journey_detail",
+                "contributes_to": "conversion",
+            }
+        )
+
+    if asset_download_count > 0:
+        facts.append(
+            {
+                "fact_type": "asset_download",
+                "count": asset_download_count,
+                "summary": f"Downloaded assets {asset_download_count} time{'s' if asset_download_count != 1 else ''}.",
+                "source": "journey_detail",
+                "contributes_to": "depth",
+            }
+        )
+
+    if external_link_click_count > 0:
+        facts.append(
+            {
+                "fact_type": "external_link_click",
+                "count": external_link_click_count,
+                "summary": f"Clicked external links {external_link_click_count} time{'s' if external_link_click_count != 1 else ''}.",
+                "source": "journey_detail",
+                "contributes_to": "depth",
+            }
+        )
+
+    if video_view_count > 0:
+        facts.append(
+            {
+                "fact_type": "video_view",
+                "count": video_view_count,
+                "summary": f"Viewed videos {video_view_count} time{'s' if video_view_count != 1 else ''}.",
+                "source": "journey_detail",
+                "contributes_to": "depth",
+            }
+        )
+
+    if distinct_visit_days > 1:
+        facts.append(
+            {
+                "fact_type": "repeat_engagement",
+                "count": distinct_visit_days,
+                "summary": f"Returned across {distinct_visit_days} distinct days.",
+                "source": "journey_detail",
+                "contributes_to": "sustenance",
+            }
+        )
+
+    if page_view_count > 0:
+        facts.append(
+            {
+                "fact_type": "page_engagement",
+                "count": page_view_count,
+                "summary": f"Viewed {page_view_count} pages during the reporting window.",
+                "source": "journey_detail",
+                "contributes_to": "activity",
+            }
+        )
+
+    if facts:
+        return facts
+
+    top_signal_json = safe_json_decode(row.get("top_signal_json"), None)
     raw_items = []
 
     if isinstance(top_signal_json, list):
         raw_items = top_signal_json
-
     elif isinstance(top_signal_json, dict):
         if isinstance(top_signal_json.get("facts"), list):
             raw_items = top_signal_json.get("facts")
@@ -708,17 +1025,10 @@ def build_top_evidence_facts(row: Dict[str, Any]) -> list:
             label,
         )
 
-        count_value = count
-
-        try:
-            count_value = int(float(count))
-        except Exception:
-            pass
-
         facts.append(
             {
                 "fact_type": item.get("fact_type") or item.get("type") or "signal",
-                "count": count_value,
+                "count": to_int(count) or 1,
                 "summary": summary,
                 "label": label,
                 "source": "top_signal_json",
