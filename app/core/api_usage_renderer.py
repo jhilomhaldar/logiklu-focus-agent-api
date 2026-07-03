@@ -1300,7 +1300,7 @@ def render_logging_section(data: Dict[str, Any]) -> str:
         <div class="info-box info-note">
             <span class="info-icon">ℹ</span>
             <div>
-                Sandbox and production logs are stored separately for audit, troubleshooting, and support.
+                Logs are stored internally for audit, troubleshooting, and support.
                 Internal storage details are not exposed in this developer guide.
             </div>
         </div>
