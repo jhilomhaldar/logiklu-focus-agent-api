@@ -1300,9 +1300,8 @@ def render_logging_section(data: Dict[str, Any]) -> str:
         <div class="info-box info-note">
             <span class="info-icon">ℹ</span>
             <div>
-                Sandbox logs are stored separately from production logs.
-                Sandbox table: <code>{esc(logging_data.get("sandbox_table"))}</code>.
-                Production table: <code>{esc(logging_data.get("production_table"))}</code>.
+                Sandbox and production logs are stored separately for audit, troubleshooting, and support.
+                Internal storage details are not exposed in this developer guide.
             </div>
         </div>
 
