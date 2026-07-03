@@ -14,37 +14,53 @@ from app.core.api_usage_renderer import render_usage_page
 router = APIRouter()
 
 
-def get_request_base_url(request: Request) -> str:
-    """
-    Build the runtime base URL from the current request host.
-    This keeps /usage and /masterusage dynamic:
-    - https://sandboxapi.logiklu.com/usage -> https://sandboxapi.logiklu.com
-    - https://api.logiklu.com/usage        -> https://api.logiklu.com
-    - http://127.0.0.1:8000/usage         -> http://127.0.0.1:8000
-    """
-
-    forwarded_proto = request.headers.get("x-forwarded-proto")
-    forwarded_host = request.headers.get("x-forwarded-host")
-    host = forwarded_host or request.headers.get("host") or ""
-
-    if forwarded_proto and host:
-        return f"{forwarded_proto}://{host}".rstrip("/")
-
-    return str(request.base_url).rstrip("/")
-
-
-def build_usage_payload(source_data: dict, request: Request) -> dict:
-    payload = copy.deepcopy(source_data)
-    payload["runtime_base_url"] = get_request_base_url(request)
-    return payload
-
-
 def get_master_usage_username() -> str:
     return str(getattr(settings, "MASTER_USAGE_USERNAME", "") or "").strip()
 
 
 def get_master_usage_password() -> str:
     return str(getattr(settings, "MASTER_USAGE_PASSWORD", "") or "").strip()
+
+
+def get_request_base_url(request: Request) -> str:
+    """
+    Build base URL from the actual browser/API request.
+
+    This fixes:
+    - sandboxapi.logiklu.com/usage showing api.logiklu.com
+    - local usage showing production URL
+    - production usage still showing production URL correctly
+    """
+
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    forwarded_host = request.headers.get("x-forwarded-host")
+
+    scheme = (forwarded_proto or request.url.scheme or "https").split(",")[0].strip()
+    host = (forwarded_host or request.headers.get("host") or "").split(",")[0].strip()
+
+    if not host:
+        return str(request.base_url).rstrip("/")
+
+    return f"{scheme}://{host}".rstrip("/")
+
+
+def prepare_usage_data_for_current_request(data: dict, request: Request) -> dict:
+    """
+    Use the same usage data, but force all rendered examples and Try Out URLs
+    to use the current request domain.
+    """
+
+    current_base_url = get_request_base_url(request)
+
+    prepared_data = copy.deepcopy(data)
+
+    prepared_data["base_url"] = current_base_url
+    prepared_data["sandbox_base_url"] = current_base_url
+    prepared_data["local_base_url"] = current_base_url
+
+    prepared_data["current_base_url"] = current_base_url
+
+    return prepared_data
 
 
 def unauthorized_master_usage_response(message: str = "Authentication required") -> HTMLResponse:
@@ -131,8 +147,12 @@ def is_master_usage_authenticated(request: Request) -> bool:
 
 @router.get("/usage", response_class=HTMLResponse)
 def api_usage_page(request: Request):
-    usage_payload = build_usage_payload(API_USAGE_DATA, request)
-    return HTMLResponse(content=render_usage_page(usage_payload))
+    usage_data = prepare_usage_data_for_current_request(
+        data=API_USAGE_DATA,
+        request=request,
+    )
+
+    return HTMLResponse(content=render_usage_page(usage_data))
 
 
 @router.get("/masterusage", response_class=HTMLResponse)
@@ -140,5 +160,9 @@ def api_master_usage_page(request: Request):
     if not is_master_usage_authenticated(request):
         return unauthorized_master_usage_response()
 
-    usage_payload = build_usage_payload(API_USAGE_MASTER_DATA, request)
-    return HTMLResponse(content=render_usage_page(usage_payload))
+    master_usage_data = prepare_usage_data_for_current_request(
+        data=API_USAGE_MASTER_DATA,
+        request=request,
+    )
+
+    return HTMLResponse(content=render_usage_page(master_usage_data))
