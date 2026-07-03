@@ -1,12 +1,116 @@
-from fastapi import APIRouter
+import base64
+import secrets
+
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
+from app.config import settings
 from app.core.api_usage_data import API_USAGE_DATA
+from app.core.api_usage_master_data import API_USAGE_MASTER_DATA
 from app.core.api_usage_renderer import render_usage_page
 
+
 router = APIRouter()
+
+
+def get_master_usage_username() -> str:
+    return str(getattr(settings, "MASTER_USAGE_USERNAME", "") or "").strip()
+
+
+def get_master_usage_password() -> str:
+    return str(getattr(settings, "MASTER_USAGE_PASSWORD", "") or "").strip()
+
+
+def unauthorized_master_usage_response(message: str = "Authentication required") -> HTMLResponse:
+    return HTMLResponse(
+        content=f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Master Usage Authentication</title>
+            <style>
+                body {{
+                    background: #0a0b0f;
+                    color: #e8eaf0;
+                    font-family: Arial, sans-serif;
+                    padding: 40px;
+                }}
+                .box {{
+                    max-width: 520px;
+                    border: 1px solid #2a2f3d;
+                    border-radius: 12px;
+                    padding: 24px;
+                    background: #111318;
+                }}
+                h1 {{
+                    font-size: 22px;
+                    margin-bottom: 10px;
+                }}
+                p {{
+                    color: #9aa0b8;
+                }}
+                code {{
+                    color: #00e5a0;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="box">
+                <h1>Master Usage Authentication Required</h1>
+                <p>{message}</p>
+                <p>Please refresh the page and enter the master usage username and password.</p>
+            </div>
+        </body>
+        </html>
+        """,
+        status_code=401,
+        headers={
+            "WWW-Authenticate": 'Basic realm="LogiKlu Master Usage"'
+        },
+    )
+
+
+def is_master_usage_authenticated(request: Request) -> bool:
+    configured_username = get_master_usage_username()
+    configured_password = get_master_usage_password()
+
+    if not configured_username or not configured_password:
+        return False
+
+    authorization = request.headers.get("Authorization", "")
+
+    if not authorization:
+        return False
+
+    if not authorization.lower().startswith("basic "):
+        return False
+
+    encoded_credentials = authorization.split(" ", 1)[1].strip()
+
+    try:
+        decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
+    except Exception:
+        return False
+
+    if ":" not in decoded_credentials:
+        return False
+
+    username, password = decoded_credentials.split(":", 1)
+
+    username_ok = secrets.compare_digest(username, configured_username)
+    password_ok = secrets.compare_digest(password, configured_password)
+
+    return username_ok and password_ok
 
 
 @router.get("/usage", response_class=HTMLResponse)
 def api_usage_page():
     return HTMLResponse(content=render_usage_page(API_USAGE_DATA))
+
+
+@router.get("/masterusage", response_class=HTMLResponse)
+def api_master_usage_page(request: Request):
+    if not is_master_usage_authenticated(request):
+        return unauthorized_master_usage_response()
+
+    return HTMLResponse(content=render_usage_page(API_USAGE_MASTER_DATA))

@@ -482,8 +482,151 @@ func main() {{
 }}'''
 
 
-def generate_code_examples(method: str, url: str, body: Any = None) -> Dict[str, str]:
+def is_oauth_token_url(url_or_path: str) -> bool:
+    value = str(url_or_path or "").lower()
+    return "/oauth/token" in value
+
+
+def is_oauth_token_endpoint(endpoint: Dict[str, Any]) -> bool:
+    return is_oauth_token_url(endpoint.get("path", ""))
+
+
+def get_endpoint_auth_type(endpoint: Dict[str, Any]) -> str:
+    auth_type = str(endpoint.get("auth_type") or "").strip().lower()
+
+    if auth_type in ("none", "no_auth", "noauth", "public"):
+        return "none"
+
+    if auth_type in ("api_key", "x_api_key", "x-api-key", "legacy_api_key"):
+        return "api_key"
+
+    if auth_type in ("bearer", "jwt", "jwt_bearer", "oauth", "oauth_jwt"):
+        return "bearer"
+
+    if is_oauth_token_endpoint(endpoint):
+        return "none"
+
+    return "bearer"
+
+
+def endpoint_uses_json_body(endpoint: Dict[str, Any]) -> bool:
+    method = str(endpoint.get("method") or "GET").upper()
+    request_type = str(endpoint.get("request_type") or "").lower()
+
+    if method == "GET":
+        return False
+
+    return is_oauth_token_endpoint(endpoint) or "json body" in request_type
+
+
+def build_body_from_parameters(endpoint: Dict[str, Any]) -> Dict[str, Any]:
+    body = {}
+
+    for param in endpoint.get("parameters", []):
+        name = param.get("name")
+
+        if name:
+            body[str(name)] = param.get("example") or ""
+
+    return body
+
+
+def get_endpoint_body(endpoint: Dict[str, Any]) -> Dict[str, Any]:
+    body = endpoint.get("body")
+
+    if isinstance(body, dict):
+        return body
+
+    if endpoint_uses_json_body(endpoint):
+        return build_body_from_parameters(endpoint)
+
+    return {}
+
+
+def get_example_request(endpoint: Dict[str, Any], example: Dict[str, Any]) -> Dict[str, Any]:
+    method = str(endpoint.get("method") or "GET").upper()
+    path = example.get("path", endpoint.get("path", ""))
+    query = dict(example.get("query") or {})
+    body = example.get("body")
+
+    if method != "GET" and endpoint_uses_json_body(endpoint):
+        if body is None:
+            if query:
+                body = query
+                query = {}
+            else:
+                body = get_endpoint_body(endpoint)
+
     return {
+        "path": path,
+        "query": query,
+        "body": body,
+    }
+
+
+def rewrite_code_auth(language: str, code: str, url: str, auth_type: str = "bearer") -> str:
+    language = str(language or "").lower()
+    auth_type = str(auth_type or "bearer").strip().lower()
+
+    if auth_type in ("none", "no_auth", "noauth") or is_oauth_token_url(url):
+        replacements = [
+            ('  -H "X-API-KEY: YOUR_API_KEY" \\\\\n', ''),
+            ('  -H "X-API-KEY: YOUR_API_KEY"', ''),
+            ('$apiKey = "YOUR_API_KEY";\n', ''),
+            ('    "X-API-KEY: " . $apiKey,\n', ''),
+            ('    "X-API-KEY: " . $apiKey\n', ''),
+            ('api_key = "YOUR_API_KEY"\n', ''),
+            ('    "X-API-KEY": api_key,\n', ''),
+            ('    "X-API-KEY": api_key\n', ''),
+            ('const apiKey = "YOUR_API_KEY";\n', ''),
+            ('    "X-API-KEY": apiKey,\n', ''),
+            ('    "X-API-KEY": apiKey\n', ''),
+            ('        String apiKey = "YOUR_API_KEY";\n', ''),
+            ('                .header("X-API-KEY", apiKey)\n', ''),
+            ('        string apiKey = "YOUR_API_KEY";\n', ''),
+            ('        client.DefaultRequestHeaders.Add("X-API-KEY", apiKey);\n', ''),
+            ('api_key = "YOUR_API_KEY"\n', ''),
+            ('request["X-API-KEY"] = api_key\n', ''),
+            ('    apiKey := "YOUR_API_KEY"\n', ''),
+            ('    req.Header.Set("X-API-KEY", apiKey)\n', ''),
+        ]
+
+        for old, new in replacements:
+            code = code.replace(old, new)
+
+        code = code.replace(" " + chr(92) + "\n " + chr(92) + "\n", " " + chr(92) + "\n")
+        code = code.replace('headers = {\n}', 'headers = {}')
+        return code
+
+    if auth_type in ("api_key", "x_api_key", "x-api-key", "legacy_api_key"):
+        return code
+
+    replacements = [
+        ('X-API-KEY: YOUR_API_KEY', 'Authorization: Bearer YOUR_ACCESS_TOKEN'),
+        ('$apiKey = "YOUR_API_KEY";', '$accessToken = "YOUR_ACCESS_TOKEN";'),
+        ('"X-API-KEY: " . $apiKey', '"Authorization: Bearer " . $accessToken'),
+        ('api_key = "YOUR_API_KEY"', 'access_token = "YOUR_ACCESS_TOKEN"'),
+        ('"X-API-KEY": api_key', '"Authorization": f"Bearer {access_token}"'),
+        ('const apiKey = "YOUR_API_KEY";', 'const accessToken = "YOUR_ACCESS_TOKEN";'),
+        ('"X-API-KEY": apiKey', '"Authorization": `Bearer ${accessToken}`'),
+        ('String apiKey = "YOUR_API_KEY";', 'String accessToken = "YOUR_ACCESS_TOKEN";'),
+        ('.header("X-API-KEY", apiKey)', '.header("Authorization", "Bearer " + accessToken)'),
+        ('string apiKey = "YOUR_API_KEY";', 'string accessToken = "YOUR_ACCESS_TOKEN";'),
+        ('client.DefaultRequestHeaders.Add("X-API-KEY", apiKey);', 'client.DefaultRequestHeaders.Add("Authorization", "Bearer " + accessToken);'),
+        ('api_key = "YOUR_API_KEY"', 'access_token = "YOUR_ACCESS_TOKEN"'),
+        ('request["X-API-KEY"] = api_key', 'request["Authorization"] = "Bearer #{access_token}"'),
+        ('apiKey := "YOUR_API_KEY"', 'accessToken := "YOUR_ACCESS_TOKEN"'),
+        ('req.Header.Set("X-API-KEY", apiKey)', 'req.Header.Set("Authorization", "Bearer "+accessToken)'),
+    ]
+
+    for old, new in replacements:
+        code = code.replace(old, new)
+
+    return code
+
+
+def generate_code_examples(method: str, url: str, body: Any = None, auth_type: str = "bearer") -> Dict[str, str]:
+    examples = {
         "curl": generate_curl(method, url, body),
         "php": generate_php(method, url, body),
         "python": generate_python(method, url, body),
@@ -493,6 +636,11 @@ def generate_code_examples(method: str, url: str, body: Any = None) -> Dict[str,
         "dotnet": generate_dotnet(method, url, body),
         "ruby": generate_ruby(method, url, body),
         "go": generate_go(method, url, body),
+    }
+
+    return {
+        language: rewrite_code_auth(language, code, url, auth_type)
+        for language, code in examples.items()
     }
 
 
@@ -671,7 +819,12 @@ def render_examples(endpoint: Dict[str, Any], base_url: str) -> str:
 
     if not examples:
         default_url = build_url(base_url, endpoint.get("path", ""), {})
-        code_examples = generate_code_examples(method=method, url=default_url, body=endpoint.get("body"))
+        code_examples = generate_code_examples(
+            method=method,
+            url=default_url,
+            body=get_endpoint_body(endpoint),
+            auth_type=get_endpoint_auth_type(endpoint),
+        )
 
         return render_language_tabs(
             f"{endpoint.get('id')}-default-example",
@@ -681,15 +834,17 @@ def render_examples(endpoint: Dict[str, Any], base_url: str) -> str:
     output = ""
 
     for index, example in enumerate(examples):
-        path = example.get("path", endpoint.get("path", ""))
-        query = example.get("query", {})
-        body = example.get("body")
+        request_data = get_example_request(endpoint, example)
+        path = request_data.get("path", endpoint.get("path", ""))
+        query = request_data.get("query", {})
+        body = request_data.get("body")
         url = build_url(base_url, path, query)
 
         code_examples = generate_code_examples(
             method=method,
             url=url,
             body=body,
+            auth_type=get_endpoint_auth_type(endpoint),
         )
 
         unique_id = f"{endpoint.get('id')}-example-{index}"
@@ -726,34 +881,38 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
     method = str(endpoint.get("method") or "GET").upper()
     path = endpoint.get("path", "")
     parameters = endpoint.get("parameters", [])
+    token_endpoint = is_oauth_token_endpoint(endpoint)
+    json_body_endpoint = endpoint_uses_json_body(endpoint)
+    auth_type = get_endpoint_auth_type(endpoint)
 
     input_rows = ""
 
-    for param in parameters:
-        name = param.get("name")
-        example = param.get("example") or ""
-        required = str(param.get("required") or "No").lower() == "yes"
+    if not json_body_endpoint:
+        for param in parameters:
+            name = param.get("name")
+            example = param.get("example") or ""
+            required = str(param.get("required") or "No").lower() == "yes"
 
-        input_rows += f"""
-        <div class="try-field">
-            <label>
-                <span>{esc(name)}</span>
-                <small>{'Required' if required else 'Optional'}</small>
-            </label>
-            <input
-                type="text"
-                data-param-name="{esc(name)}"
-                data-param-required="{'yes' if required else 'no'}"
-                placeholder="{esc(example)}"
-            />
-            <p>{esc(param.get("description"))}</p>
-        </div>
-        """
+            input_rows += f"""
+            <div class="try-field">
+                <label>
+                    <span>{esc(name)}</span>
+                    <small>{'Required' if required else 'Optional'}</small>
+                </label>
+                <input
+                    type="text"
+                    data-param-name="{esc(name)}"
+                    data-param-required="{'yes' if required else 'no'}"
+                    placeholder="{esc(example)}"
+                />
+                <p>{esc(param.get("description"))}</p>
+            </div>
+            """
 
     body_box = ""
 
     if method != "GET":
-        default_body = json.dumps(endpoint.get("body", {}), indent=2)
+        default_body = json.dumps(get_endpoint_body(endpoint), indent=2)
 
         body_box = f"""
         <div class="try-field">
@@ -765,20 +924,12 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
         </div>
         """
 
-    return f"""
-    <div class="tryout-box"
-         data-method="{esc(method)}"
-         data-path="{esc(path)}"
-         data-base-url="{esc(base_url)}">
-
-        <div class="info-box info-note">
-            <span class="info-icon">ℹ</span>
-            <div>
-                Enter your API key and parameters, then click <strong>Send Request</strong>.
-                The real API response will appear below.
-            </div>
-        </div>
-
+    if auth_type == "none":
+        auth_note = "This endpoint uses No Auth. Send only Content-Type: application/json and the JSON body."
+        auth_box = ""
+    elif auth_type == "api_key":
+        auth_note = "Enter your legacy X-API-KEY, then click Send Request."
+        auth_box = """
         <div class="try-field">
             <label>
                 <span>API Key</span>
@@ -786,10 +937,46 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
             </label>
             <input type="password" data-api-key placeholder="YOUR_API_KEY" />
         </div>
+        """
+    else:
+        auth_note = "Enter a Bearer access token generated from /oauth/token, then click Send Request."
+        auth_box = """
+        <div class="try-field">
+            <label>
+                <span>Bearer Access Token</span>
+                <small>Required</small>
+            </label>
+            <input type="password" data-access-token placeholder="YOUR_ACCESS_TOKEN" />
+        </div>
+        """
 
+    try_grid = ""
+
+    if input_rows:
+        try_grid = f"""
         <div class="try-grid">
             {input_rows}
         </div>
+        """
+
+    return f"""
+    <div class="tryout-box"
+         data-method="{esc(method)}"
+         data-path="{esc(path)}"
+         data-base-url="{esc(base_url)}"
+         data-auth-type="{esc(auth_type)}">
+
+        <div class="info-box info-note">
+            <span class="info-icon">ℹ</span>
+            <div>
+                {esc(auth_note)}
+                The real API response will appear below.
+            </div>
+        </div>
+
+        {auth_box}
+
+        {try_grid}
 
         {body_box}
 
@@ -1067,8 +1254,8 @@ def render_logging_section(data: Dict[str, Any]) -> str:
 
 def render_usage_page(data: Dict[str, Any]) -> str:
     base_url = get_current_base_url(data)
-    first_example_url = build_url(base_url, "/api/v1/accounts", {"limit": 20, "offset": 0})
-    first_example_code = generate_code_examples("GET", first_example_url)
+    first_example_url = build_url(base_url, data.get("quick_start_path", "/focus/account-intelligence"), data.get("quick_start_query", {"page": 1, "per_page": 10}))
+    first_example_code = generate_code_examples("GET", first_example_url, auth_type=data.get("quick_start_auth_type", "bearer"))
 
     template = """
 <!DOCTYPE html>
@@ -1998,7 +2185,7 @@ pre code {
         <div class="hero-meta">
             <div class="hero-badge">{{ENV_NAME}} URL <span>{{BASE_URL}}</span></div>
             <div class="hero-badge">Format <span>JSON</span></div>
-            <div class="hero-badge">Auth <span>X-API-KEY</span></div>
+            <div class="hero-badge">Auth <span>{{AUTH_BADGE}}</span></div>
             <div class="hero-badge">TLS <span>Required</span></div>
         </div>
     </div>
@@ -2014,8 +2201,10 @@ pre code {
             </div>
 
             <p class="section-desc">
-                Every protected API request must include your API key in the request header.
-                The API key tells LogiKlu which client is asking for data.
+                Protected APIs use OAuth 2.0 Client Credentials with a short-lived Bearer JWT.
+                First call <code>/oauth/token</code> with your client credentials, then send
+                <code>Authorization: Bearer &lt;access_token&gt;</code> on protected API requests.
+                The legacy <code>X-API-KEY</code> header remains supported for backward compatibility.
             </p>
 
             <div class="base-url-box">
@@ -2025,15 +2214,15 @@ pre code {
 
             <div class="auth-grid">
                 <div class="auth-card">
-                    <div class="auth-card-title">API Key Header</div>
+                    <div class="auth-card-title">OAuth Token Endpoint</div>
                     <div class="auth-card-desc">
-                        Send your API key using <code>X-API-KEY</code>. Without this header, protected APIs will return an authentication error.
+                        Call <code>POST /oauth/token</code> with <code>client_id</code>, <code>client_secret</code>, and <code>grant_type=client_credentials</code>. This endpoint uses No Auth.
                     </div>
                 </div>
                 <div class="auth-card">
-                    <div class="auth-card-title">Content Type</div>
+                    <div class="auth-card-title">Bearer Token Header</div>
                     <div class="auth-card-desc">
-                        For GET APIs no body is required. For POST/PATCH APIs, send JSON with <code>Content-Type: application/json</code>.
+                        Send the returned access token as <code>Authorization: Bearer &lt;access_token&gt;</code>. Tokens expire after the configured lifetime, currently 900 seconds.
                     </div>
                 </div>
             </div>
@@ -2042,7 +2231,7 @@ pre code {
 
             <div class="info-box info-warn">
                 <span class="info-icon">⚠</span>
-                <div>Never expose your API key in public frontend code or public repositories. Treat it like a password.</div>
+                <div>Never expose your client secret, access token, or legacy API key in public frontend code or public repositories.</div>
             </div>
         </div>
 
@@ -2068,7 +2257,7 @@ pre code {
             </div>
 
             <p class="section-desc">
-                This example fetches the first 20 accounts. Select the language you use and copy the code.
+                This example fetches the first page of Focus Account Intelligence using Bearer token authentication. Select the language you use and copy the code.
             </p>
 
             {{QUICK_START_CODE}}
@@ -2091,9 +2280,9 @@ pre code {
             <div class="response-list">
                 <div class="response-item"><span class="status-code s2">200</span> OK — Request succeeded</div>
                 <div class="response-item"><span class="status-code s4">400</span> Bad Request — Invalid or missing parameters</div>
-                <div class="response-item"><span class="status-code s4">401</span> Unauthorized — Missing or invalid API key</div>
+                <div class="response-item"><span class="status-code s4">401</span> Unauthorized — Missing or invalid Bearer token / API key</div>
                 <div class="response-item"><span class="status-code s4">403</span> Forbidden — Client is not allowed to access this data</div>
-                <div class="response-item"><span class="status-code s4">404</span> Not Found — Requested account/contact does not exist</div>
+                <div class="response-item"><span class="status-code s4">404</span> Not Found — Requested account/contact/intelligence record does not exist</div>
                 <div class="response-item"><span class="status-code s5">500</span> Server Error — Unexpected internal error</div>
             </div>
 
@@ -2243,29 +2432,45 @@ async function sendTryOutRequest(button) {
         return;
     }
 
-    const apiKeyInput = box.querySelector('[data-api-key]');
     const responseBox = box.querySelector('[data-try-response]');
     const requestUrlBox = box.querySelector('[data-request-url]');
     const method = box.getAttribute('data-method') || 'GET';
-
-    const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
-
-    if (!apiKey) {
-        responseBox.textContent = JSON.stringify({
-            status: "error",
-            message: "Please enter API key first."
-        }, null, 2);
-        return;
-    }
+    const authType = box.getAttribute('data-auth-type') || 'bearer';
 
     const url = buildTryOutUrl(box);
 
     requestUrlBox.textContent = url;
     responseBox.textContent = "Loading...";
 
-    const headers = {
-        "X-API-KEY": apiKey
-    };
+    const headers = {};
+
+    if (authType === 'bearer') {
+        const tokenInput = box.querySelector('[data-access-token]');
+        const accessToken = tokenInput ? tokenInput.value.trim() : '';
+
+        if (!accessToken) {
+            responseBox.textContent = JSON.stringify({
+                status: "error",
+                message: "Please enter Bearer access token first."
+            }, null, 2);
+            return;
+        }
+
+        headers["Authorization"] = "Bearer " + accessToken;
+    } else if (authType === 'api_key') {
+        const apiKeyInput = box.querySelector('[data-api-key]');
+        const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+
+        if (!apiKey) {
+            responseBox.textContent = JSON.stringify({
+                status: "error",
+                message: "Please enter API key first."
+            }, null, 2);
+            return;
+        }
+
+        headers["X-API-KEY"] = apiKey;
+    }
 
     const options = {
         method: method,
@@ -2314,20 +2519,41 @@ async function sendTryOutRequest(button) {
             detail: error.message
         }, null, 2);
     }
-}
-</script>
+}</script>
 
 </body>
 </html>
     """
+
+    auth_example = f"""# Step 1: Generate access token - No Auth
+POST {base_url}/oauth/token
+Content-Type: application/json
+
+{{
+  "client_id": "YOUR_CLIENT_ID",
+  "client_secret": "YOUR_CLIENT_SECRET",
+  "grant_type": "client_credentials"
+}}
+
+# Step 2: Use token for protected APIs
+GET {base_url}/focus/account-intelligence?page=1&per_page=10
+Authorization: Bearer YOUR_ACCESS_TOKEN"""
+
+    if data.get("show_legacy_api_key"):
+        auth_example += f"""
+
+# Legacy/backward-compatible API-key authentication
+GET {base_url}/focus/account-intelligence?page=1&per_page=10
+X-API-KEY: YOUR_API_KEY"""
 
     page = template
     page = page.replace("{{TITLE}}", esc(data.get("title")))
     page = page.replace("{{SUBTITLE}}", esc(data.get("subtitle")))
     page = page.replace("{{BASE_URL}}", esc(base_url))
     page = page.replace("{{ENV_NAME}}", esc(get_current_environment_name()))
+    page = page.replace("{{AUTH_BADGE}}", esc(data.get("auth_badge", "OAuth JWT")))
     page = page.replace("{{SIDEBAR}}", render_sidebar(data))
-    page = page.replace("{{AUTH_CODE}}", render_code_block("X-API-KEY: YOUR_API_KEY\nContent-Type: application/json", "HTTP Headers"))
+    page = page.replace("{{AUTH_CODE}}", render_code_block(auth_example, "OAuth / JWT Flow"))
     page = page.replace("{{SUCCESS_CODE}}", render_code_block(json.dumps(data.get("response_format", {}).get("success", {}), indent=2), "JSON · Success Response"))
     page = page.replace("{{ERROR_CODE}}", render_code_block(json.dumps(data.get("response_format", {}).get("error", {}), indent=2), "JSON · Error Response"))
     page = page.replace("{{QUICK_START_CODE}}", render_language_tabs("quick-start-example", first_example_code))

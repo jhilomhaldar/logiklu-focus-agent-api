@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     JWT_ISSUER: str = "logiklu-focus-api"
     JWT_AUDIENCE: str = "cognitive-ai"
 
+    MASTER_USAGE_USERNAME: str = "logikluadmin"
+    MASTER_USAGE_PASSWORD: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True
