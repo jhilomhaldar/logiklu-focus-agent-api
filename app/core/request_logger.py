@@ -15,19 +15,46 @@ MAX_BODY_LOG_LENGTH = 10000
 
 
 def get_api_environment() -> str:
-    environment = str(getattr(settings, "API_ENV", "production") or "production").strip().lower()
+    """
+    Resolve the current API environment for request logging.
+
+    Supported environments:
+    - production / prod / live
+    - sandbox
+    - staging
+
+    Unknown values fall back to production so table selection always remains safe.
+    """
+
+    environment = str(
+        getattr(settings, "API_ENV", "production") or "production"
+    ).strip().lower()
+
+    if environment in ["production", "prod", "live"]:
+        return "production"
 
     if environment == "sandbox":
         return "sandbox"
+
+    if environment == "staging":
+        return "staging"
 
     return "production"
 
 
 def get_log_table_name() -> str:
+    """
+    Return a fixed whitelist table name for the current environment.
+    Do not build this from user input.
+    """
+
     environment = get_api_environment()
 
     if environment == "sandbox":
         return "lk_agent_api_request_logs_sandbox"
+
+    if environment == "staging":
+        return "lk_agent_api_request_logs_staging"
 
     return "lk_agent_api_request_logs"
 
