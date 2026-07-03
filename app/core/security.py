@@ -20,8 +20,14 @@ AUTH_TIMESTAMP_TOLERANCE_SECONDS = 300
 def get_api_environment() -> str:
     api_env = str(getattr(settings, "API_ENV", "production") or "production").strip().lower()
 
+    if api_env in ["local", "development", "dev"]:
+        return "local"
+
     if api_env == "sandbox":
         return "sandbox"
+
+    if api_env == "staging":
+        return "staging"
 
     return "production"
 
@@ -362,6 +368,7 @@ def extract_scope_from_permissions(permissions_value) -> str:
     if not scopes:
         scopes.add("focus:account-intelligence:read")
         scopes.add("focus:company-intelligence:read")
+        scopes.add("focus:contacts:read")
 
     return " ".join(sorted(scopes))
 
@@ -414,6 +421,17 @@ def fetch_api_client(api_key: str, api_environment: str) -> Optional[dict]:
             (
                 ac.sandbox_api_key = %s
                 OR ac.sandbox_api_key_hash = %s
+            )
+        """
+    elif api_environment == "staging":
+        # Staging currently uses the production API-key columns for legacy X-API-KEY
+        # compatibility because the master table does not yet have staging_api_key
+        # columns. OAuth/JWT tokens are still environment-specific through API_ENV,
+        # JWT_ISSUER, JWT_AUDIENCE and JWT_SECRET_KEY.
+        key_condition = """
+            (
+                ac.production_api_key = %s
+                OR ac.production_api_key_hash = %s
             )
         """
     else:
