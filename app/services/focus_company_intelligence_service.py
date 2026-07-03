@@ -7,7 +7,7 @@ from app.db.client import get_client_connection
 
 
 TIMEZONE_NAME = "Asia/Kolkata"
-SCHEMA_VERSION = "focus_company_intelligence.v1"
+SCHEMA_VERSION = "logiklu_focus_account_intelligence.v1"
 
 
 def safe_json_decode(value: Any, default: Any = None) -> Any:

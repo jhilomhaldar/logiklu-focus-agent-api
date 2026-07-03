@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import health, auth_test, accounts, contacts, usage, focus_company_intelligence, focus_accounts, focus_account_intelligence
+from app.api.v1.endpoints import health, auth_test, accounts, contacts, usage, focus_company_intelligence, focus_accounts, focus_account_intelligence, focus_usage, oauth
 
 
 api_router = APIRouter()
@@ -43,4 +43,14 @@ api_router.include_router(
 api_router.include_router(
     focus_account_intelligence.router,
     tags=["Focus Account Intelligence"]
+)
+
+api_router.include_router(
+    focus_usage.router,
+    tags=["Focus Usage"]
+)
+
+api_router.include_router(
+    oauth.router,
+    tags=["OAuth"]
 )

@@ -19,6 +19,12 @@ class Settings(BaseSettings):
 
     ALLOWED_ORIGINS: str = "*"
 
+    JWT_SECRET_KEY: str = ""
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_SECONDS: int = 900
+    JWT_ISSUER: str = "logiklu-focus-api"
+    JWT_AUDIENCE: str = "cognitive-ai"
+
     class Config:
         env_file = ".env"
         case_sensitive = True
