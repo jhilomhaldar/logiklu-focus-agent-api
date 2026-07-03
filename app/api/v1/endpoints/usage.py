@@ -1,4 +1,5 @@
 import base64
+import copy
 import secrets
 
 from fastapi import APIRouter, Request
@@ -11,6 +12,31 @@ from app.core.api_usage_renderer import render_usage_page
 
 
 router = APIRouter()
+
+
+def get_request_base_url(request: Request) -> str:
+    """
+    Build the runtime base URL from the current request host.
+    This keeps /usage and /masterusage dynamic:
+    - https://sandboxapi.logiklu.com/usage -> https://sandboxapi.logiklu.com
+    - https://api.logiklu.com/usage        -> https://api.logiklu.com
+    - http://127.0.0.1:8000/usage         -> http://127.0.0.1:8000
+    """
+
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    forwarded_host = request.headers.get("x-forwarded-host")
+    host = forwarded_host or request.headers.get("host") or ""
+
+    if forwarded_proto and host:
+        return f"{forwarded_proto}://{host}".rstrip("/")
+
+    return str(request.base_url).rstrip("/")
+
+
+def build_usage_payload(source_data: dict, request: Request) -> dict:
+    payload = copy.deepcopy(source_data)
+    payload["runtime_base_url"] = get_request_base_url(request)
+    return payload
 
 
 def get_master_usage_username() -> str:
@@ -104,8 +130,9 @@ def is_master_usage_authenticated(request: Request) -> bool:
 
 
 @router.get("/usage", response_class=HTMLResponse)
-def api_usage_page():
-    return HTMLResponse(content=render_usage_page(API_USAGE_DATA))
+def api_usage_page(request: Request):
+    usage_payload = build_usage_payload(API_USAGE_DATA, request)
+    return HTMLResponse(content=render_usage_page(usage_payload))
 
 
 @router.get("/masterusage", response_class=HTMLResponse)
@@ -113,4 +140,5 @@ def api_master_usage_page(request: Request):
     if not is_master_usage_authenticated(request):
         return unauthorized_master_usage_response()
 
-    return HTMLResponse(content=render_usage_page(API_USAGE_MASTER_DATA))
+    usage_payload = build_usage_payload(API_USAGE_MASTER_DATA, request)
+    return HTMLResponse(content=render_usage_page(usage_payload))

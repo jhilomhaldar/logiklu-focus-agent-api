@@ -887,7 +887,29 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
 
     input_rows = ""
 
-    if not json_body_endpoint:
+    if token_endpoint:
+        for param in parameters:
+            name = param.get("name")
+            example = param.get("example") or ""
+            required = str(param.get("required") or "No").lower() == "yes"
+            input_type = "password" if str(name).lower() == "client_secret" else "text"
+
+            input_rows += f"""
+            <div class="try-field">
+                <label>
+                    <span>{esc(name)}</span>
+                    <small>{'Required' if required else 'Optional'}</small>
+                </label>
+                <input
+                    type="{esc(input_type)}"
+                    data-body-field="{esc(name)}"
+                    data-param-required="{'yes' if required else 'no'}"
+                    placeholder="{esc(example)}"
+                />
+                <p>{esc(param.get("description"))}</p>
+            </div>
+            """
+    elif not json_body_endpoint:
         for param in parameters:
             name = param.get("name")
             example = param.get("example") or ""
@@ -911,7 +933,7 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
 
     body_box = ""
 
-    if method != "GET":
+    if method != "GET" and not token_endpoint:
         default_body = json.dumps(get_endpoint_body(endpoint), indent=2)
 
         body_box = f"""
@@ -924,9 +946,30 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
         </div>
         """
 
-    if auth_type == "none":
+    token_output_box = ""
+
+    if token_endpoint:
+        auth_note = "Generate a Bearer access token from the current environment. The token will be saved in this browser and can be reused in other Try Out sections."
+        auth_box = ""
+        submit_label = "Generate Token"
+        token_output_box = """
+        <div class="try-field" data-generated-token-wrap style="display:none;">
+            <label>
+                <span>Generated Access Token</span>
+                <small>Copy or use in Try Out</small>
+            </label>
+            <textarea data-generated-token rows="5" readonly></textarea>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                <button type="button" class="try-btn" onclick="copyGeneratedToken(this)">Copy Token</button>
+                <button type="button" class="try-btn" onclick="applyGeneratedTokenToBearerFields(this)">Use Token in This Page</button>
+            </div>
+            <p>This token is stored only in your browser localStorage for this documentation page.</p>
+        </div>
+        """
+    elif auth_type == "none":
         auth_note = "This endpoint uses No Auth. Send only Content-Type: application/json and the JSON body."
         auth_box = ""
+        submit_label = "Send Request"
     elif auth_type == "api_key":
         auth_note = "Enter your legacy X-API-KEY, then click Send Request."
         auth_box = """
@@ -938,8 +981,9 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
             <input type="password" data-api-key placeholder="YOUR_API_KEY" />
         </div>
         """
+        submit_label = "Send Request"
     else:
-        auth_note = "Enter a Bearer access token generated from /oauth/token, then click Send Request."
+        auth_note = "Enter a Bearer access token generated from /oauth/token, or click Use Saved Token if already generated on this page."
         auth_box = """
         <div class="try-field">
             <label>
@@ -947,8 +991,14 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
                 <small>Required</small>
             </label>
             <input type="password" data-access-token placeholder="YOUR_ACCESS_TOKEN" />
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                <button type="button" class="copy-btn" onclick="useSavedBearerToken(this)">Use Saved Token</button>
+                <button type="button" class="copy-btn" onclick="clearSavedBearerToken(this)">Clear Saved Token</button>
+            </div>
+            <p>Generate a token from the /oauth/token Try Out section first, or paste one manually.</p>
         </div>
         """
+        submit_label = "Send Request"
 
     try_grid = ""
 
@@ -964,7 +1014,8 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
          data-method="{esc(method)}"
          data-path="{esc(path)}"
          data-base-url="{esc(base_url)}"
-         data-auth-type="{esc(auth_type)}">
+         data-auth-type="{esc(auth_type)}"
+         data-token-endpoint="{'yes' if token_endpoint else 'no'}">
 
         <div class="info-box info-note">
             <span class="info-icon">ℹ</span>
@@ -981,7 +1032,7 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
         {body_box}
 
         <button type="button" class="try-btn" onclick="sendTryOutRequest(this)">
-            Send Request
+            {esc(submit_label)}
         </button>
 
         <div class="try-url">
@@ -989,16 +1040,17 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
             <code data-request-url>{esc(base_url)}{esc(path)}</code>
         </div>
 
+        {token_output_box}
+
         <div class="code-wrap try-response-wrap">
             <div class="code-toolbar">
                 <span class="code-lang">Live Response</span>
                 <button class="copy-btn" type="button" onclick="copyCode(this)">Copy</button>
             </div>
-            <pre><code data-try-response>Click "Send Request" to see response here.</code></pre>
+            <pre><code data-try-response>Click "{esc(submit_label)}" to see response here.</code></pre>
         </div>
     </div>
     """
-
 
 def render_endpoint_card(section_id: str, endpoint: Dict[str, Any], base_url: str, open_default: bool = False) -> str:
     endpoint_id = f"{section_id}-{endpoint.get('id')}"
@@ -1153,7 +1205,16 @@ def render_error_codes(data: Dict[str, Any]) -> str:
 
     return rows
 
-def get_current_environment_name() -> str:
+def get_current_environment_name(data: Dict[str, Any] = None) -> str:
+    data = data or {}
+    runtime_base_url = str(data.get("runtime_base_url") or "").lower()
+
+    if "127.0.0.1" in runtime_base_url or "localhost" in runtime_base_url:
+        return "Local"
+
+    if "sandboxapi" in runtime_base_url:
+        return "Sandbox"
+
     api_env = str(getattr(settings, "API_ENV", "production") or "production").strip().lower()
 
     if api_env == "sandbox":
@@ -1163,15 +1224,23 @@ def get_current_environment_name() -> str:
 
 
 def get_current_base_url(data: Dict[str, Any]) -> str:
+    runtime_base_url = str(data.get("runtime_base_url") or "").strip().rstrip("/")
+
+    if runtime_base_url:
+        return runtime_base_url
+
     api_env = str(getattr(settings, "API_ENV", "production") or "production").strip().lower()
 
     if api_env == "sandbox":
         return data.get("sandbox_base_url") or data.get("base_url") or ""
 
+    if api_env == "local":
+        return data.get("local_base_url") or "http://127.0.0.1:8000"
+
     return data.get("base_url") or ""
 
 def render_environments(data: Dict[str, Any]) -> str:
-    environment_name = get_current_environment_name()
+    environment_name = get_current_environment_name(data)
     base_url = get_current_base_url(data)
 
     description = "Use this sandbox environment for testing API integration before production release."
@@ -2389,8 +2458,103 @@ function scrollToSection(id) {
     }
 }
 
+function getRuntimeBaseUrl(box) {
+    // The Try Out tool must always call the same host where the documentation is opened.
+    // Example:
+    // https://sandboxapi.logiklu.com/usage  -> https://sandboxapi.logiklu.com
+    // https://api.logiklu.com/usage         -> https://api.logiklu.com
+    // http://127.0.0.1:8000/usage          -> http://127.0.0.1:8000
+    return window.location.origin;
+}
+
+function getSavedBearerToken() {
+    try {
+        return localStorage.getItem('logiklu_usage_access_token') || '';
+    } catch (error) {
+        return '';
+    }
+}
+
+function saveBearerToken(token) {
+    try {
+        localStorage.setItem('logiklu_usage_access_token', token || '');
+    } catch (error) {}
+}
+
+function clearSavedBearerToken(button) {
+    saveBearerToken('');
+    document.querySelectorAll('[data-access-token]').forEach(function(input) {
+        input.value = '';
+    });
+
+    if (button) {
+        button.textContent = 'Cleared';
+        setTimeout(function() {
+            button.textContent = 'Clear Saved Token';
+        }, 1200);
+    }
+}
+
+function applyGeneratedTokenToBearerFields(button) {
+    const token = getSavedBearerToken();
+
+    if (!token) {
+        alert('No generated token found. Generate a token first.');
+        return;
+    }
+
+    document.querySelectorAll('[data-access-token]').forEach(function(input) {
+        input.value = token;
+    });
+
+    if (button) {
+        button.textContent = 'Applied';
+        setTimeout(function() {
+            button.textContent = 'Use Token in This Page';
+        }, 1200);
+    }
+}
+
+function useSavedBearerToken(button) {
+    const token = getSavedBearerToken();
+    const box = button.closest('.tryout-box');
+    const input = box ? box.querySelector('[data-access-token]') : null;
+
+    if (!token) {
+        alert('No saved token found. Generate a token from /oauth/token first.');
+        return;
+    }
+
+    if (input) {
+        input.value = token;
+    }
+
+    button.textContent = 'Token Applied';
+    setTimeout(function() {
+        button.textContent = 'Use Saved Token';
+    }, 1200);
+}
+
+function copyGeneratedToken(button) {
+    const box = button.closest('.tryout-box');
+    const tokenBox = box ? box.querySelector('[data-generated-token]') : null;
+    const token = tokenBox ? tokenBox.value.trim() : getSavedBearerToken();
+
+    if (!token) {
+        alert('No token available to copy.');
+        return;
+    }
+
+    navigator.clipboard.writeText(token).then(function() {
+        button.textContent = 'Copied!';
+        setTimeout(function() {
+            button.textContent = 'Copy Token';
+        }, 1200);
+    });
+}
+
 function buildTryOutUrl(box) {
-    let baseUrl = box.getAttribute('data-base-url') || '';
+    let baseUrl = getRuntimeBaseUrl(box);
     let path = box.getAttribute('data-path') || '';
     let method = box.getAttribute('data-method') || 'GET';
 
@@ -2414,7 +2578,7 @@ function buildTryOutUrl(box) {
         }
     });
 
-    let url = baseUrl.replace(/\\/$/, '') + '/' + path.replace(/^\\//, '');
+    let url = baseUrl.replace(/\/$/, '') + '/' + path.replace(/^\//, '');
 
     const queryString = params.toString();
 
@@ -2423,6 +2587,63 @@ function buildTryOutUrl(box) {
     }
 
     return url;
+}
+
+function buildTokenEndpointBody(box) {
+    const payload = {};
+    const inputs = box.querySelectorAll('[data-body-field]');
+
+    inputs.forEach(function(input) {
+        const name = input.getAttribute('data-body-field');
+        const value = input.value.trim() || input.getAttribute('placeholder') || '';
+
+        if (name) {
+            payload[name] = value;
+        }
+    });
+
+    if (!payload.grant_type) {
+        payload.grant_type = 'client_credentials';
+    }
+
+    return payload;
+}
+
+function handleTokenGenerationResponse(box, data) {
+    let token = '';
+
+    if (data && typeof data === 'object') {
+        if (data.access_token) {
+            token = data.access_token;
+        } else if (data.response && data.response.access_token) {
+            token = data.response.access_token;
+        } else if (data.data && data.data.access_token) {
+            token = data.data.access_token;
+        }
+    }
+
+    if (!token) {
+        return;
+    }
+
+    saveBearerToken(token);
+
+    const wrap = box.querySelector('[data-generated-token-wrap]');
+    const tokenBox = box.querySelector('[data-generated-token]');
+
+    if (wrap) {
+        wrap.style.display = 'block';
+    }
+
+    if (tokenBox) {
+        tokenBox.value = token;
+    }
+
+    document.querySelectorAll('[data-access-token]').forEach(function(input) {
+        if (!input.value.trim()) {
+            input.value = token;
+        }
+    });
 }
 
 async function sendTryOutRequest(button) {
@@ -2436,11 +2657,12 @@ async function sendTryOutRequest(button) {
     const requestUrlBox = box.querySelector('[data-request-url]');
     const method = box.getAttribute('data-method') || 'GET';
     const authType = box.getAttribute('data-auth-type') || 'bearer';
+    const isTokenEndpoint = box.getAttribute('data-token-endpoint') === 'yes';
 
     const url = buildTryOutUrl(box);
 
     requestUrlBox.textContent = url;
-    responseBox.textContent = "Loading...";
+    responseBox.textContent = 'Loading...';
 
     const headers = {};
 
@@ -2450,26 +2672,26 @@ async function sendTryOutRequest(button) {
 
         if (!accessToken) {
             responseBox.textContent = JSON.stringify({
-                status: "error",
-                message: "Please enter Bearer access token first."
+                status: 'error',
+                message: 'Please enter Bearer access token first or generate a token from /oauth/token.'
             }, null, 2);
             return;
         }
 
-        headers["Authorization"] = "Bearer " + accessToken;
+        headers['Authorization'] = 'Bearer ' + accessToken;
     } else if (authType === 'api_key') {
         const apiKeyInput = box.querySelector('[data-api-key]');
         const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
 
         if (!apiKey) {
             responseBox.textContent = JSON.stringify({
-                status: "error",
-                message: "Please enter API key first."
+                status: 'error',
+                message: 'Please enter API key first.'
             }, null, 2);
             return;
         }
 
-        headers["X-API-KEY"] = apiKey;
+        headers['X-API-KEY'] = apiKey;
     }
 
     const options = {
@@ -2478,30 +2700,34 @@ async function sendTryOutRequest(button) {
     };
 
     if (method !== 'GET') {
-        headers["Content-Type"] = "application/json";
+        headers['Content-Type'] = 'application/json';
 
-        const bodyBox = box.querySelector('[data-body-json]');
-        const bodyText = bodyBox ? bodyBox.value.trim() : "{}";
+        if (isTokenEndpoint) {
+            options.body = JSON.stringify(buildTokenEndpointBody(box));
+        } else {
+            const bodyBox = box.querySelector('[data-body-json]');
+            const bodyText = bodyBox ? bodyBox.value.trim() : '{}';
 
-        try {
-            options.body = JSON.stringify(JSON.parse(bodyText || "{}"));
-        } catch (error) {
-            responseBox.textContent = JSON.stringify({
-                status: "error",
-                message: "Invalid JSON body.",
-                detail: error.message
-            }, null, 2);
-            return;
+            try {
+                options.body = JSON.stringify(JSON.parse(bodyText || '{}'));
+            } catch (error) {
+                responseBox.textContent = JSON.stringify({
+                    status: 'error',
+                    message: 'Invalid JSON body.',
+                    detail: error.message
+                }, null, 2);
+                return;
+            }
         }
     }
 
     try {
         const response = await fetch(url, options);
-        const contentType = response.headers.get("content-type") || "";
+        const contentType = response.headers.get('content-type') || '';
 
         let data;
 
-        if (contentType.includes("application/json")) {
+        if (contentType.includes('application/json')) {
             data = await response.json();
         } else {
             data = await response.text();
@@ -2512,14 +2738,19 @@ async function sendTryOutRequest(button) {
             response: data
         }, null, 2);
 
+        if (isTokenEndpoint && response.ok) {
+            handleTokenGenerationResponse(box, data);
+        }
+
     } catch (error) {
         responseBox.textContent = JSON.stringify({
-            status: "error",
-            message: "Request failed.",
+            status: 'error',
+            message: 'Request failed.',
             detail: error.message
         }, null, 2);
     }
-}</script>
+}
+</script>
 
 </body>
 </html>
@@ -2550,7 +2781,7 @@ X-API-KEY: YOUR_API_KEY"""
     page = page.replace("{{TITLE}}", esc(data.get("title")))
     page = page.replace("{{SUBTITLE}}", esc(data.get("subtitle")))
     page = page.replace("{{BASE_URL}}", esc(base_url))
-    page = page.replace("{{ENV_NAME}}", esc(get_current_environment_name()))
+    page = page.replace("{{ENV_NAME}}", esc(get_current_environment_name(data)))
     page = page.replace("{{AUTH_BADGE}}", esc(data.get("auth_badge", "OAuth JWT")))
     page = page.replace("{{SIDEBAR}}", render_sidebar(data))
     page = page.replace("{{AUTH_CODE}}", render_code_block(auth_example, "OAuth / JWT Flow"))
