@@ -290,8 +290,409 @@ def get_page_actions(page: Dict[str, Any]) -> List[Dict[str, Any]]:
     return []
 
 
+
+def clean_filter_value(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+
+    value = str(value).strip()
+
+    if value == "":
+        return None
+
+    return value
+
+
+def split_csv_values(value: Any) -> List[str]:
+    value = clean_filter_value(value)
+
+    if not value:
+        return []
+
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def append_like_filter(
+    where_parts: List[str],
+    params: List[Any],
+    expressions: List[str],
+    value: Any,
+) -> None:
+    tokens = split_csv_values(value)
+
+    if not tokens:
+        return
+
+    clauses = []
+
+    for token in tokens:
+        for expression in expressions:
+            clauses.append(f"{expression} LIKE %s")
+            params.append(f"%{token}%")
+
+    if clauses:
+        where_parts.append("(" + " OR ".join(clauses) + ")")
+
+
+def append_exact_filter(
+    where_parts: List[str],
+    params: List[Any],
+    expression: str,
+    value: Any,
+) -> None:
+    tokens = split_csv_values(value)
+
+    if not tokens:
+        return
+
+    if len(tokens) == 1:
+        where_parts.append(f"{expression} = %s")
+        params.append(tokens[0])
+        return
+
+    placeholders = ", ".join(["%s"] * len(tokens))
+    where_parts.append(f"{expression} IN ({placeholders})")
+    params.extend(tokens)
+
+
+def append_integer_filter(
+    where_parts: List[str],
+    params: List[Any],
+    expression: str,
+    value: Any,
+) -> None:
+    tokens = split_csv_values(value)
+    numbers = []
+
+    for token in tokens:
+        try:
+            numbers.append(int(token))
+        except Exception:
+            pass
+
+    if not numbers:
+        return
+
+    if len(numbers) == 1:
+        where_parts.append(f"{expression} = %s")
+        params.append(numbers[0])
+        return
+
+    placeholders = ", ".join(["%s"] * len(numbers))
+    where_parts.append(f"{expression} IN ({placeholders})")
+    params.extend(numbers)
+
+
+def append_bool_shortlist_filter(
+    where_parts: List[str],
+    params: List[Any],
+    value: Any,
+) -> None:
+    value = clean_filter_value(value)
+
+    if not value:
+        return
+
+    value_lower = value.lower()
+
+    if value_lower in ["1", "true", "yes", "y"]:
+        where_parts.append(
+            """
+            (
+                fcl.is_shortlisted = %s
+                OR fcl.is_shortlisted = %s
+                OR LOWER(CAST(fcl.is_shortlisted AS CHAR)) = %s
+                OR LOWER(CAST(fcl.is_shortlisted AS CHAR)) = %s
+            )
+            """
+        )
+        params.extend(["Y", "1", "true", "yes"])
+        return
+
+    if value_lower in ["0", "false", "no", "n"]:
+        where_parts.append(
+            """
+            (
+                fcl.is_shortlisted = %s
+                OR fcl.is_shortlisted = %s
+                OR fcl.is_shortlisted IS NULL
+                OR LOWER(CAST(fcl.is_shortlisted AS CHAR)) = %s
+                OR LOWER(CAST(fcl.is_shortlisted AS CHAR)) = %s
+            )
+            """
+        )
+        params.extend(["N", "0", "false", "no"])
+        return
+
+    where_parts.append("fcl.is_shortlisted = %s")
+    params.append(value)
+
+
+def append_score_range_filter(
+    where_parts: List[str],
+    params: List[Any],
+    expression: str,
+    min_value: Any = None,
+    max_value: Any = None,
+) -> None:
+    if clean_filter_value(min_value) is not None:
+        try:
+            where_parts.append(f"{expression} >= %s")
+            params.append(float(min_value))
+        except Exception:
+            pass
+
+    if clean_filter_value(max_value) is not None:
+        try:
+            where_parts.append(f"{expression} <= %s")
+            params.append(float(max_value))
+        except Exception:
+            pass
+
+
+def append_contact_filter(
+    where_parts: List[str],
+    params: List[Any],
+    value: Any,
+    field: str = "any",
+) -> None:
+    tokens = split_csv_values(value)
+
+    if not tokens:
+        return
+
+    clauses = []
+
+    for token in tokens:
+        like_value = f"%{token}%"
+
+        if field == "email":
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM lk_central_contacts cc
+                    WHERE cc.lead_id = fcl.lead_id
+                      AND cc.email LIKE %s
+                )
+                """
+            )
+            params.append(like_value)
+
+        elif field == "phone":
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM lk_central_contacts cc
+                    WHERE cc.lead_id = fcl.lead_id
+                      AND cc.phone LIKE %s
+                )
+                """
+            )
+            params.append(like_value)
+
+        elif field == "name":
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM lk_central_contacts cc
+                    WHERE cc.lead_id = fcl.lead_id
+                      AND (
+                            cc.first_name LIKE %s
+                            OR cc.last_name LIKE %s
+                            OR CONCAT_WS(' ', cc.first_name, cc.last_name) LIKE %s
+                      )
+                )
+                """
+            )
+            params.extend([like_value, like_value, like_value])
+
+        else:
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM lk_central_contacts cc
+                    WHERE cc.lead_id = fcl.lead_id
+                      AND (
+                            cc.first_name LIKE %s
+                            OR cc.last_name LIKE %s
+                            OR CONCAT_WS(' ', cc.first_name, cc.last_name) LIKE %s
+                            OR cc.email LIKE %s
+                            OR cc.phone LIKE %s
+                      )
+                )
+                """
+            )
+            params.extend([like_value, like_value, like_value, like_value, like_value])
+
+        # Fallback: contacts are also stored as JSON/text inside journey table.
+        clauses.append("fj.contacts LIKE %s")
+        params.append(like_value)
+
+    if clauses:
+        where_parts.append("(" + " OR ".join(clauses) + ")")
+
+
+TEXT_FILTER_MAP = {
+    "lead_name": ["lm.lead_name", "fcl.visitors_name"],
+    "account_name": ["lm.lead_name", "fcl.visitors_name"],
+    "company_name": ["lm.lead_name", "fcl.visitors_name"],
+    "visitors_name": ["fcl.visitors_name"],
+    "website": ["lm.website", "fcl.website"],
+    "company_domain": ["lm.website", "fcl.website"],
+    "domain": ["lm.website", "fcl.website"],
+    "industry": ["lm.industry"],
+    "city": ["lm.city", "fcl.city"],
+    "state": ["lm.state", "fcl.state"],
+    "country": ["lm.country", "fcl.country"],
+    "email": ["lm.email"],
+    "phone": ["lm.phone"],
+    "lead_category": ["lm.lead_category"],
+    "lead_type": ["lm.lead_type"],
+    "lead_status": ["lm.status"],
+    "active_status": ["lm.active_status"],
+    "interest_level": ["fcl.interest_category"],
+    "interest_category": ["fcl.interest_category"],
+    "priority_label": ["fcl.priority_label"],
+    "priority_level": ["fcl.priority_label"],
+    "engagement_level": ["fcl.engagement_level"],
+}
+
+EXACT_FILTER_MAP = {
+    "account_id": "fcl.lead_id",
+    "lead_id": "fcl.lead_id",
+    "company_id": "fcl.lead_id",
+    "report_company_log_id": "fcl.report_company_log_id",
+    "owner": "lm.owner",
+}
+
+SCORE_FILTER_MAP = {
+    "activity_score": "fcl.activity_score",
+    "depth_score": "fcl.depth_score",
+    "sustenance_score": "fcl.sustenance_score",
+    "sustainment_score": "fcl.sustenance_score",
+    "context_score": "fcl.context_score",
+    "contextual_score": "fcl.context_score",
+    "conversion_score": "fcl.conversion_score",
+    "interest_score": "fcl.interest_score",
+    "priority_score": "fcl.priority_score",
+    "final_score": "fcl.final_score",
+    "total_score": "fcl.final_score",
+}
+
+
+def append_named_filter(
+    where_parts: List[str],
+    params: List[Any],
+    field_name: str,
+    value: Any,
+) -> None:
+    field_name = str(field_name or "").strip().lower()
+
+    if not field_name:
+        return
+
+    if field_name in ["contact_email", "contact_emails"]:
+        append_contact_filter(where_parts, params, value, "email")
+        return
+
+    if field_name in ["contact_name", "contact_names"]:
+        append_contact_filter(where_parts, params, value, "name")
+        return
+
+    if field_name in ["contact_phone", "contact_mobile"]:
+        append_contact_filter(where_parts, params, value, "phone")
+        return
+
+    if field_name in ["contact", "contacts"]:
+        append_contact_filter(where_parts, params, value, "any")
+        return
+
+    if field_name == "is_shortlisted":
+        append_bool_shortlist_filter(where_parts, params, value)
+        return
+
+    if field_name in EXACT_FILTER_MAP:
+        append_integer_filter(where_parts, params, EXACT_FILTER_MAP[field_name], value)
+        return
+
+    if field_name in TEXT_FILTER_MAP:
+        append_like_filter(where_parts, params, TEXT_FILTER_MAP[field_name], value)
+        return
+
+    if field_name in SCORE_FILTER_MAP:
+        append_score_range_filter(where_parts, params, SCORE_FILTER_MAP[field_name], value, value)
+        return
+
+
+def append_advanced_filters(
+    where_parts: List[str],
+    params: List[Any],
+    filters: Optional[str] = None,
+) -> None:
+    if not filters:
+        return
+
+    decoded = safe_json_decode(filters, [])
+
+    if isinstance(decoded, dict):
+        if isinstance(decoded.get("filters"), list):
+            decoded = decoded.get("filters")
+        else:
+            decoded = [decoded]
+
+    if not isinstance(decoded, list):
+        return
+
+    for item in decoded:
+        if not isinstance(item, dict):
+            continue
+
+        field_name = str(item.get("field") or "").strip().lower()
+        operator = str(item.get("operator") or "like").strip().lower()
+        value = item.get("value")
+
+        if not field_name:
+            continue
+
+        if field_name in SCORE_FILTER_MAP:
+            expression = SCORE_FILTER_MAP[field_name]
+
+            if operator in ["gte", ">="]:
+                append_score_range_filter(where_parts, params, expression, min_value=value)
+            elif operator in ["lte", "<="]:
+                append_score_range_filter(where_parts, params, expression, max_value=value)
+            elif operator in ["gt", ">"]:
+                try:
+                    where_parts.append(f"{expression} > %s")
+                    params.append(float(value))
+                except Exception:
+                    pass
+            elif operator in ["lt", "<"]:
+                try:
+                    where_parts.append(f"{expression} < %s")
+                    params.append(float(value))
+                except Exception:
+                    pass
+            elif operator in ["between", "range"] and isinstance(value, list) and len(value) >= 2:
+                append_score_range_filter(where_parts, params, expression, value[0], value[1])
+            else:
+                append_score_range_filter(where_parts, params, expression, value, value)
+
+            continue
+
+        # For non-score filters, keep field names whitelisted through append_named_filter.
+        append_named_filter(where_parts, params, field_name, value)
+
+
 def build_where_clause(
     search: Optional[str] = None,
+    search_by: Optional[str] = None,
+    filters: Optional[str] = None,
+    filter_params: Optional[Dict[str, Any]] = None,
     interest_level: Optional[str] = None,
     priority_label: Optional[str] = None,
     is_shortlisted: Optional[str] = None,
@@ -304,53 +705,99 @@ def build_where_clause(
     params: List[Any] = []
 
     if search:
-        search_value = f"%{search.strip()}%"
+        if search_by:
+            append_named_filter(where_parts, params, search_by, search)
+        else:
+            search_value = f"%{search.strip()}%"
 
-        where_parts.append(
-            """
-            (
-                lm.lead_name LIKE %s
-                OR fcl.visitors_name LIKE %s
-                OR lm.website LIKE %s
-                OR fcl.website LIKE %s
-                OR lm.industry LIKE %s
-                OR lm.city LIKE %s
-                OR lm.state LIKE %s
-                OR lm.country LIKE %s
-                OR fcl.city LIKE %s
-                OR fcl.state LIKE %s
-                OR fcl.country LIKE %s
+            where_parts.append(
+                """
+                (
+                    lm.lead_name LIKE %s
+                    OR fcl.visitors_name LIKE %s
+                    OR lm.website LIKE %s
+                    OR fcl.website LIKE %s
+                    OR lm.industry LIKE %s
+                    OR lm.city LIKE %s
+                    OR lm.state LIKE %s
+                    OR lm.country LIKE %s
+                    OR lm.email LIKE %s
+                    OR lm.phone LIKE %s
+                    OR fcl.city LIKE %s
+                    OR fcl.state LIKE %s
+                    OR fcl.country LIKE %s
+                    OR fcl.interest_category LIKE %s
+                    OR fcl.priority_label LIKE %s
+                    OR fcl.engagement_level LIKE %s
+                    OR EXISTS (
+                        SELECT 1
+                        FROM lk_central_contacts cc
+                        WHERE cc.lead_id = fcl.lead_id
+                          AND (
+                                cc.first_name LIKE %s
+                                OR cc.last_name LIKE %s
+                                OR CONCAT_WS(' ', cc.first_name, cc.last_name) LIKE %s
+                                OR cc.email LIKE %s
+                                OR cc.phone LIKE %s
+                          )
+                    )
+                    OR fj.contacts LIKE %s
+                )
+                """
             )
-            """
-        )
 
-        params.extend(
-            [
-                search_value,
-                search_value,
-                search_value,
-                search_value,
-                search_value,
-                search_value,
-                search_value,
-                search_value,
-                search_value,
-                search_value,
-                search_value,
-            ]
-        )
+            params.extend(
+                [
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                    search_value,
+                ]
+            )
 
+    # Backward-compatible parameters already used by the endpoint.
     if interest_level:
-        where_parts.append("fcl.interest_category = %s")
-        params.append(interest_level)
+        append_named_filter(where_parts, params, "interest_level", interest_level)
 
     if priority_label:
-        where_parts.append("fcl.priority_label LIKE %s")
-        params.append(f"%{priority_label.strip()}%")
+        append_named_filter(where_parts, params, "priority_label", priority_label)
 
     if is_shortlisted:
-        where_parts.append("fcl.is_shortlisted = %s")
-        params.append(is_shortlisted)
+        append_bool_shortlist_filter(where_parts, params, is_shortlisted)
+
+    filter_params = filter_params or {}
+
+    for field_name, value in filter_params.items():
+        append_named_filter(where_parts, params, field_name, value)
+
+    for score_name, expression in SCORE_FILTER_MAP.items():
+        min_key = f"{score_name}_min"
+        max_key = f"{score_name}_max"
+
+        min_value = filter_params.get(min_key)
+        max_value = filter_params.get(max_key)
+
+        append_score_range_filter(where_parts, params, expression, min_value, max_value)
+
+    append_advanced_filters(where_parts, params, filters)
 
     return " AND ".join(where_parts), params
 
@@ -360,6 +807,9 @@ def fetch_focus_account_intelligence_list(
     page: int = 1,
     per_page: int = 10,
     search: Optional[str] = None,
+    search_by: Optional[str] = None,
+    filters: Optional[str] = None,
+    filter_params: Optional[Dict[str, Any]] = None,
     interest_level: Optional[str] = None,
     priority_label: Optional[str] = None,
     is_shortlisted: Optional[str] = None,
@@ -376,6 +826,9 @@ def fetch_focus_account_intelligence_list(
 
         where_clause, params = build_where_clause(
             search=search,
+            search_by=search_by,
+            filters=filters,
+            filter_params=filter_params,
             interest_level=interest_level,
             priority_label=priority_label,
             is_shortlisted=is_shortlisted,
