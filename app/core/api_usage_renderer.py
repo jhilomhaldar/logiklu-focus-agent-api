@@ -722,7 +722,7 @@ def render_parameters(endpoint: Dict[str, Any]) -> str:
         """
 
     return f"""
-    <table class="params-table">
+    <table class="params-table parameters-table">
         <thead>
             <tr>
                 <th>Parameter</th>
@@ -761,7 +761,7 @@ def render_multi_field_filters(endpoint: Dict[str, Any]) -> str:
         Example: <code>?country=India&amp;industry=Software</code>
     </p>
 
-    <table class="params-table">
+    <table class="params-table filter-options-table">
         <thead>
             <tr>
                 <th>Filter Field</th>
@@ -798,7 +798,7 @@ def render_search_by_options(endpoint: Dict[str, Any]) -> str:
         Use <code>search</code> with <code>search_by</code> when you want to search one selected field only.
     </p>
 
-    <table class="params-table">
+    <table class="params-table filter-options-table">
         <thead>
             <tr>
                 <th>search_by</th>
@@ -1877,8 +1877,22 @@ pre code {
     color: var(--text);
 }
 
+.endpoint-body,
+.endpoint-tab-content,
+.example-block,
+.code-wrap {
+    min-width: 0;
+}
+
+.endpoint-tab-content {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
 .params-table {
     width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 13px;
     margin-bottom: 1rem;
@@ -1895,39 +1909,104 @@ pre code {
     padding: 0.5rem 0.75rem;
     background: var(--bg3);
     border-bottom: 1px solid var(--border);
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .params-table td {
     padding: 0.6rem 0.75rem;
     border-bottom: 1px solid var(--border);
     vertical-align: top;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .params-table tr:hover td {
     background: var(--bg3);
 }
 
+.parameters-table th:nth-child(1),
+.parameters-table td:nth-child(1) {
+    width: 19%;
+}
+
+.parameters-table th:nth-child(2),
+.parameters-table td:nth-child(2) {
+    width: 13%;
+}
+
+.parameters-table th:nth-child(3),
+.parameters-table td:nth-child(3) {
+    width: 11%;
+}
+
+.parameters-table th:nth-child(4),
+.parameters-table td:nth-child(4) {
+    width: 26%;
+}
+
+.parameters-table th:nth-child(5),
+.parameters-table td:nth-child(5) {
+    width: 31%;
+}
+
+.filter-options-table th:nth-child(1),
+.filter-options-table td:nth-child(1) {
+    width: 24%;
+}
+
+.filter-options-table th:nth-child(2),
+.filter-options-table td:nth-child(2) {
+    width: 26%;
+}
+
+.filter-options-table th:nth-child(3),
+.filter-options-table td:nth-child(3) {
+    width: 50%;
+}
+
+.params-table code {
+    display: inline-block;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.6;
+}
+
 .param-name {
     font-family: 'JetBrains Mono', monospace;
     color: var(--accent2);
     font-size: 12.5px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .param-type {
+    display: inline-block;
+    max-width: 100%;
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     color: var(--purple);
     background: rgba(167,139,250,0.1);
     padding: 2px 6px;
     border-radius: 3px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .param-req {
+    display: inline-block;
+    max-width: 100%;
     font-size: 10px;
     font-family: 'JetBrains Mono', monospace;
     padding: 2px 6px;
     border-radius: 3px;
     font-weight: 600;
+    white-space: normal;
 }
 
 .req {
@@ -1943,6 +2022,10 @@ pre code {
 .param-desc {
     color: var(--muted);
     font-size: 13px;
+    line-height: 1.75;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .response-list {
