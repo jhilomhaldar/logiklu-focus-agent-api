@@ -1,7 +1,7 @@
 # Auto-generated LogiKlu API usage data with Leadforms, Roles, and Users.
 # Replace the matching app/core file with this file.
 
-API_USAGE_MASTER_DATA = {'title': 'LogiKlu Agent API Master Guide',
+API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu Agent API Master Guide',
  'subtitle': 'Internal developer guide for LogiKlu Agent API, including Focus Account Intelligence, Focus Contacts, '
              'Campaigns, Leadforms, Users, Accounts, Contacts, OAuth/JWT, examples, filters, and error behavior, '
              'including submitted contact search for Leadforms, Users, and Roles APIs.',
@@ -79,7 +79,7 @@ API_USAGE_MASTER_DATA = {'title': 'LogiKlu Agent API Master Guide',
                            'errors follow the same standard response format.'},
            {'title': 'Master documentation',
             'description': 'This page contains internal and backward-compatible API details. Public/client '
-                           'documentation should be maintained separately in api_usage_data.py.'},
+                           'documentation should be maintained separately in api_instruction_data.py.'},
            {'title': 'Focus dynamic search',
             'description': '/focus/account-intelligence supports general search, search_by, account/company filters, '
                            'linked contact filters, priority/interest filters, and score range filters.'},
