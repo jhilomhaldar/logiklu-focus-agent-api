@@ -6,9 +6,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from app.config import settings
-from app.core.api_usage_data import API_USAGE_DATA
-from app.core.api_usage_master_data import API_USAGE_MASTER_DATA
-from app.core.api_usage_renderer import render_usage_page
+from app.core.api_instruction_data import API_INSTRUCTION_DATA
+from app.core.api_master_instruction_data import API_MASTER_INSTRUCTION_DATA
+from app.core.api_instruction_renderer import render_instruction_page
 
 
 router = APIRouter()
@@ -145,24 +145,24 @@ def is_master_usage_authenticated(request: Request) -> bool:
     return username_ok and password_ok
 
 
-@router.get("/usage", response_class=HTMLResponse)
+@router.get("/instructions", response_class=HTMLResponse)
 def api_usage_page(request: Request):
     usage_data = prepare_usage_data_for_current_request(
-        data=API_USAGE_DATA,
+        data=API_INSTRUCTION_DATA,
         request=request,
     )
 
-    return HTMLResponse(content=render_usage_page(usage_data))
+    return HTMLResponse(content=render_instruction_page(usage_data))
 
 
-@router.get("/masterusage", response_class=HTMLResponse)
+@router.get("/masterinstructions", response_class=HTMLResponse)
 def api_master_usage_page(request: Request):
     if not is_master_usage_authenticated(request):
         return unauthorized_master_usage_response()
 
     master_usage_data = prepare_usage_data_for_current_request(
-        data=API_USAGE_MASTER_DATA,
+        data=API_MASTER_INSTRUCTION_DATA,
         request=request,
     )
 
-    return HTMLResponse(content=render_usage_page(master_usage_data))
+    return HTMLResponse(content=render_instruction_page(master_usage_data))

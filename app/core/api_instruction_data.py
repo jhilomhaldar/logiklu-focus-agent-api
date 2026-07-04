@@ -1,7 +1,7 @@
 # Auto-generated LogiKlu API usage data with Leadforms, Roles, and Users.
 # Replace the matching app/core file with this file.
 
-API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
+API_INSTRUCTION_DATA = {'title': 'LogiKlu Focus API Guide',
  'subtitle': 'Client-facing developer guide for LogiKlu Focus Account Intelligence, Focus Contacts, Campaigns, and '
              'Leadforms, Users APIs using OAuth 2.0 Bearer JWT authentication, including submitted contact search for '
              'Leadforms, Users and Roles APIs.',
