@@ -22,7 +22,7 @@ def get_roles(
     role_code: Optional[str] = Query(default=None),
 ):
     """
-    Protected static Roles list API.
+    Protected Roles list API.
 
     URL:
     /roles
@@ -68,7 +68,7 @@ def get_role_detail(
     auth_context: dict = Depends(authenticate_request),
 ):
     """
-    Protected static Role detail API.
+    Protected Role detail API.
 
     URL:
     /roles/{role_code}
