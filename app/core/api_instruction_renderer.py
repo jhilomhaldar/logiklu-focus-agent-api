@@ -1320,7 +1320,7 @@ def render_logging_section(data: Dict[str, Any]) -> str:
     """
 
 
-def render_usage_page(data: Dict[str, Any]) -> str:
+def render_instruction_page(data: Dict[str, Any]) -> str:
     base_url = get_current_base_url(data)
     first_example_url = build_url(base_url, data.get("quick_start_path", "/focus/account-intelligence"), data.get("quick_start_query", {"page": 1, "per_page": 10}))
     first_example_code = generate_code_examples("GET", first_example_url, auth_type=data.get("quick_start_auth_type", "bearer"))
