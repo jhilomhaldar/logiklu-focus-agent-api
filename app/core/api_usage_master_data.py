@@ -1,9 +1,10 @@
-# Auto-generated LogiKlu API usage data with updated Leadforms.
+# Auto-generated LogiKlu API usage data with Leadforms and Roles.
+# Replace the matching app/core file with this file.
 
 API_USAGE_MASTER_DATA = {'title': 'LogiKlu Agent API Master Guide',
  'subtitle': 'Internal developer guide for LogiKlu Agent API, including Focus Account Intelligence, Focus Contacts, '
              'Campaigns, Leadforms, Accounts, Contacts, OAuth/JWT, examples, filters, and error behavior, including '
-             'submitted contact search for Leadforms.',
+             'submitted contact search for Leadforms, and static Roles APIs.',
  'base_url': 'https://api.logiklu.com',
  'sandbox_base_url': 'https://sandboxapi.logiklu.com',
  'local_base_url': 'http://127.0.0.1:8000',
@@ -29,7 +30,7 @@ API_USAGE_MASTER_DATA = {'title': 'LogiKlu Agent API Master Guide',
                                                  'token_type': 'Bearer',
                                                  'expires_in': 'Token lifetime in seconds. Current default is 900 '
                                                                'seconds.',
-                                                 'scope': 'Allowed API permissions/scopes.'}}},
+                                                 'scope': 'Allowed API permissions/scopes. roles:read'}}},
  'response_format': {'success': {'status': 'success',
                                  'message': 'Accounts fetched successfully',
                                  'meta': {'generated_at': '2026-05-27T10:00:00+00:00',
@@ -130,7 +131,16 @@ API_USAGE_MASTER_DATA = {'title': 'LogiKlu Agent API Master Guide',
             'description': 'Submitted/contact filters search lk_link_visit or lk_link_visits using '
                            'embed_id/form_embed_id/leadform_embed_id, then map to leadform_form_embed.id and '
                            'leadform_form.id. When contact_id is present, lk_central_contacts is also searched for '
-                           'name, email, phone, and company fields.'}],
+                           'name, email, phone, and company fields.'},
+           {'title': 'Static roles',
+            'description': '/roles returns a static LogiKlu CRM role catalogue. These records are not read from a '
+                           'client database.'},
+           {'title': 'Role codes',
+            'description': 'Role codes are unique stable identifiers: clientsuperadmin, clientadmin, dataadmin, '
+                           'supervisor, clientuser, and leadresearcher.'},
+           {'title': 'Field hierarchy roles',
+            'description': 'Supervisor and Sales Person roles are field hierarchy roles. Administrative/software roles '
+                           'such as Client Super Admin do not have child users.'}],
  'sections': [{'id': 'authentication',
                'title': 'OAuth / JWT Authentication',
                'description': 'Generate a short-lived access token using /oauth/token. Then call protected APIs using '
@@ -2497,6 +2507,193 @@ API_USAGE_MASTER_DATA = {'title': 'LogiKlu Agent API Master Guide',
                                                                                            'soft_bounced': [],
                                                                                            'total_bounced': [],
                                                                                            'unsubscribed': []}}}}}]},
+              {'id': 'roles',
+               'title': 'Roles',
+               'description': 'Use Roles APIs to read the static LogiKlu CRM role catalogue. Roles are not fetched '
+                              'from a database; each role is returned with a unique role_code, display name, '
+                              'description, and active flag.',
+               'endpoints': [{'id': 'roles-list',
+                              'title': 'Roles List',
+                              'method': 'GET',
+                              'path': '/roles',
+                              'purpose': 'Fetch the static list of available CRM roles. The endpoint supports optional '
+                                         'search and role_code filtering. Returned roles include administrative, data '
+                                         'administration, field hierarchy, sales, and lead research roles.',
+                              'auth_type': 'bearer',
+                              'request_type': 'Query Parameters',
+                              'parameters': [{'name': 'search',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'admin',
+                                              'description': 'Search across role_code, role_name, and description.'},
+                                             {'name': 'role_code',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'clientadmin',
+                                              'description': 'Filter the static list by one exact role code.'}],
+                              'examples': [{'title': 'Fetch all roles',
+                                            'description': 'Return the complete static role catalogue.',
+                                            'path': '/roles',
+                                            'query': {}},
+                                           {'title': 'Search roles',
+                                            'description': 'Find roles matching admin in the role code, name, or '
+                                                           'description.',
+                                            'path': '/roles',
+                                            'query': {'search': 'admin'}},
+                                           {'title': 'Filter by role code',
+                                            'description': 'Return only the Client Admin role from the static list.',
+                                            'path': '/roles',
+                                            'query': {'role_code': 'clientadmin'}}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'Roles fetched successfully',
+                                                   'meta': {'generated_at': '2026-07-04T08:30:00+00:00',
+                                                            'search': None,
+                                                            'role_code': None,
+                                                            'record_count': 6},
+                                                   'data': {'schema_version': 'logiklu_role.v1',
+                                                            'roles': [{'role_code': 'clientsuperadmin',
+                                                                       'role_name': 'Client Super Admin',
+                                                                       'description': 'Client Super Admin users have '
+                                                                                      'full access across the client '
+                                                                                      'account. They can view all '
+                                                                                      'records, manage all CRM data '
+                                                                                      'such as leads, deals, contacts, '
+                                                                                      'and activities, create records '
+                                                                                      'for any user, manage all '
+                                                                                      'settings, and add any type of '
+                                                                                      'user without approval. Reports '
+                                                                                      'are not generated for this role '
+                                                                                      'because this is an '
+                                                                                      'administrative/software '
+                                                                                      'management role, not a field or '
+                                                                                      'market-facing role. This role '
+                                                                                      'cannot have child users because '
+                                                                                      'it is not part of the field '
+                                                                                      'hierarchy.',
+                                                                       'is_active': True},
+                                                                      {'role_code': 'clientadmin',
+                                                                       'role_name': 'Client Admin',
+                                                                       'description': 'Client Admin users have access '
+                                                                                      'similar to Client Super Admin '
+                                                                                      'users, including broad access '
+                                                                                      'to CRM records, users, and '
+                                                                                      'operational data. The key '
+                                                                                      'difference is that they cannot '
+                                                                                      'add admin-level users directly. '
+                                                                                      'Admin user creation requires '
+                                                                                      'approval from a Client Super '
+                                                                                      'Admin. Other than this approval '
+                                                                                      'restriction, their access is '
+                                                                                      'largely similar to the Client '
+                                                                                      'Super Admin role.',
+                                                                       'is_active': True},
+                                                                      {'role_code': 'dataadmin',
+                                                                       'role_name': 'Client Data Admin',
+                                                                       'description': 'Client Data Admin users can '
+                                                                                      'manage CRM data such as leads, '
+                                                                                      'deals, contacts, and '
+                                                                                      'activities. They can add and '
+                                                                                      'update operational CRM records, '
+                                                                                      'but they cannot view or modify '
+                                                                                      'system settings. This role is '
+                                                                                      'intended for users responsible '
+                                                                                      'for maintaining CRM data '
+                                                                                      'without administrative '
+                                                                                      'configuration access.',
+                                                                       'is_active': True},
+                                                                      {'role_code': 'supervisor',
+                                                                       'role_name': 'Manager',
+                                                                       'description': 'Manager users are part of the '
+                                                                                      'field hierarchy. They can '
+                                                                                      'manage their own leads, deals, '
+                                                                                      'contacts, and activities, and '
+                                                                                      'they can also have child users '
+                                                                                      'such as other managers and '
+                                                                                      'sales representatives. They can '
+                                                                                      'view reports for themselves and '
+                                                                                      'their subordinates. They may '
+                                                                                      'create users only under their '
+                                                                                      'own hierarchy, and such user '
+                                                                                      'creation requires approval from '
+                                                                                      'a Client Admin or Client Super '
+                                                                                      'Admin.',
+                                                                       'is_active': True},
+                                                                      {'role_code': 'clientuser',
+                                                                       'role_name': 'Sales Person',
+                                                                       'description': 'Sales Person users are field '
+                                                                                      'workers with limited CRM '
+                                                                                      'access. They can manage their '
+                                                                                      'own leads, deals, contacts, and '
+                                                                                      'activities, but they cannot '
+                                                                                      'create or manage subordinate '
+                                                                                      'users. This role is intended '
+                                                                                      'for sales representatives who '
+                                                                                      'work on assigned or self-owned '
+                                                                                      'CRM records.',
+                                                                       'is_active': True},
+                                                                      {'role_code': 'leadresearcher',
+                                                                       'role_name': 'Lead Researcher',
+                                                                       'description': 'Lead Researcher users are '
+                                                                                      'responsible for researching and '
+                                                                                      'adding leads. They have access '
+                                                                                      'only to lead-related features '
+                                                                                      'and can add or upload leads for '
+                                                                                      'managers or sales '
+                                                                                      'representatives. This role is '
+                                                                                      'focused on lead discovery and '
+                                                                                      'data entry, without access to '
+                                                                                      'deals, broader CRM operations, '
+                                                                                      'settings, or hierarchy '
+                                                                                      'management.',
+                                                                       'is_active': True}]}},
+                              'search_by_options': [{'name': 'search',
+                                                     'example': 'admin',
+                                                     'description': 'General role search across role_code, role_name, '
+                                                                    'and description.'},
+                                                    {'name': 'role_code',
+                                                     'example': 'leadresearcher',
+                                                     'description': 'Exact role code filter. Valid values are '
+                                                                    'clientsuperadmin, clientadmin, dataadmin, '
+                                                                    'supervisor, clientuser, and leadresearcher.'}]},
+                             {'id': 'roles-detail',
+                              'title': 'Role Detail',
+                              'method': 'GET',
+                              'path': '/roles/{role_code}',
+                              'purpose': 'Fetch one static role definition by its unique role_code.',
+                              'auth_type': 'bearer',
+                              'request_type': 'Path Parameter',
+                              'parameters': [{'name': 'role_code',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'clientadmin',
+                                              'description': 'Unique static role code. Valid values are '
+                                                             'clientsuperadmin, clientadmin, dataadmin, supervisor, '
+                                                             'clientuser, and leadresearcher.'}],
+                              'examples': [{'title': 'Fetch Client Admin role',
+                                            'description': 'Return the static role definition for Client Admin.',
+                                            'path': '/roles/clientadmin',
+                                            'query': {}}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'Role detail fetched successfully',
+                                                   'meta': {'generated_at': '2026-07-04T08:30:00+00:00',
+                                                            'role_code': 'clientadmin'},
+                                                   'data': {'schema_version': 'logiklu_role.v1',
+                                                            'role': {'role_code': 'clientadmin',
+                                                                     'role_name': 'Client Admin',
+                                                                     'description': 'Client Admin users have access '
+                                                                                    'similar to Client Super Admin '
+                                                                                    'users, including broad access to '
+                                                                                    'CRM records, users, and '
+                                                                                    'operational data. The key '
+                                                                                    'difference is that they cannot '
+                                                                                    'add admin-level users directly. '
+                                                                                    'Admin user creation requires '
+                                                                                    'approval from a Client Super '
+                                                                                    'Admin. Other than this approval '
+                                                                                    'restriction, their access is '
+                                                                                    'largely similar to the Client '
+                                                                                    'Super Admin role.',
+                                                                     'is_active': True}}}}]},
               {'id': 'accounts',
                'title': 'Accounts',
                'description': 'Use Account APIs to read company/account information from LogiKlu CRM.',
@@ -3023,6 +3220,18 @@ API_USAGE_MASTER_DATA = {'title': 'LogiKlu Agent API Master Guide',
             {'code': 'FOCUS_CONTACTS_FETCH_FAILED',
              'http_status': 500,
              'meaning': 'The Focus Contacts list could not be fetched because of a server-side error.',
+             'fix': 'Retry later or contact LogiKlu support with request details.'},
+            {'code': 'ROLES_FETCH_FAILED',
+             'http_status': 500,
+             'meaning': 'The roles list could not be fetched because of a server-side error.',
+             'fix': 'Retry later or contact LogiKlu support with request details.'},
+            {'code': 'ROLE_NOT_FOUND',
+             'http_status': 404,
+             'meaning': 'No static role exists for the requested role_code.',
+             'fix': 'Use one of the valid role codes returned by /roles.'},
+            {'code': 'ROLE_DETAIL_FETCH_FAILED',
+             'http_status': 500,
+             'meaning': 'The role detail endpoint failed because of a server-side error.',
              'fix': 'Retry later or contact LogiKlu support with request details.'}],
  'logging': {'title': 'API Request Logging',
              'description': 'LogiKlu stores API request logs internally for audit, troubleshooting, and support.',
