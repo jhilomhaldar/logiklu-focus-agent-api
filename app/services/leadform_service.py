@@ -34,6 +34,17 @@ LEADFORM_SEARCH_FIELDS = {
     "email_subject_admin": "email_subject_admin",
     "created_date": "created_date",
     "modified_date": "modified_date",
+
+    # Submitted/contact search through lk_link_visit(s) -> embed_id -> leadform_form_embed -> form_id -> leadform.
+    "submitted_contact": "submitted_contact",
+    "submitted_by": "submitted_contact",
+    "submitted_contact_name": "submitted_contact_name",
+    "submitted_contact_email": "submitted_contact_email",
+    "submitted_contact_phone": "submitted_contact_phone",
+    "contact": "submitted_contact",
+    "contact_name": "submitted_contact_name",
+    "contact_email": "submitted_contact_email",
+    "contact_phone": "submitted_contact_phone",
 }
 
 
@@ -51,6 +62,15 @@ TEXT_FIELDS = {
     "redirect_url",
     "email_subject_user",
     "email_subject_admin",
+    "submitted_contact",
+    "submitted_by",
+    "submitted_contact_name",
+    "submitted_contact_email",
+    "submitted_contact_phone",
+    "contact",
+    "contact_name",
+    "contact_email",
+    "contact_phone",
 }
 
 
@@ -69,6 +89,32 @@ EXACT_FIELDS = {
 DATE_FIELDS = {
     "created_date": "lf.created_date",
     "modified_date": "lf.modified_date",
+}
+
+
+SUBMITTED_CONTACT_FIELDS = {
+    "submitted_contact",
+    "submitted_by",
+    "submitted_contact_name",
+    "submitted_contact_email",
+    "submitted_contact_phone",
+    "contact",
+    "contact_name",
+    "contact_email",
+    "contact_phone",
+}
+
+
+SUBMITTED_CONTACT_FIELD_ALIASES = {
+    "submitted_contact": "all",
+    "submitted_by": "all",
+    "contact": "all",
+    "submitted_contact_name": "name",
+    "contact_name": "name",
+    "submitted_contact_email": "email",
+    "contact_email": "email",
+    "submitted_contact_phone": "phone",
+    "contact_phone": "phone",
 }
 
 
@@ -452,6 +498,11 @@ def build_search_condition(
     if not field:
         return
 
+    # Submitted contact search needs DB table/column detection, so it is handled
+    # separately in build_submitted_contact_condition().
+    if field in SUBMITTED_CONTACT_FIELD_ALIASES:
+        return
+
     apply_single_field_condition(
         field=search_by_value,
         operator="like",
@@ -597,6 +648,10 @@ def apply_single_field_condition(
     mapped_field = LEADFORM_SEARCH_FIELDS.get(field)
 
     if not mapped_field:
+        return
+
+    # These filters are built later using lk_link_visit(s) and contact table metadata.
+    if mapped_field in SUBMITTED_CONTACT_FIELD_ALIASES:
         return
 
     if mapped_field in ["form_id"]:
@@ -911,7 +966,6 @@ def normalize_embed_row(row: Dict[str, Any]) -> Dict[str, Any]:
 
 def normalize_leadform_row(row: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "schema_version": SCHEMA_VERSION,
         "form_id": row.get("form_id"),
         "form_template_id": row.get("form_template_id"),
         "form_name": row.get("form_name"),
@@ -937,6 +991,421 @@ def normalize_leadform_row(row: Dict[str, Any]) -> Dict[str, Any]:
         ),
         "embeds": [],
     }
+
+
+def quote_identifier(identifier: str) -> str:
+    return "`" + str(identifier or "").replace("`", "") + "`"
+
+
+def get_existing_table_name(connection, candidate_tables: List[str]) -> Optional[str]:
+    if not candidate_tables:
+        return None
+
+    placeholders = ",".join(["%s"] * len(candidate_tables))
+
+    sql = f"""
+        SELECT TABLE_NAME AS table_name
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME IN ({placeholders})
+        ORDER BY FIELD(TABLE_NAME, {placeholders})
+        LIMIT 1
+    """
+
+    params = list(candidate_tables) + list(candidate_tables)
+
+    with connection.cursor() as cursor:
+        cursor.execute(sql, tuple(params))
+        row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    return row.get("table_name") or row.get("TABLE_NAME")
+
+
+def get_table_columns(connection, table_name: Optional[str]) -> set:
+    if not table_name:
+        return set()
+
+    safe_table_name = quote_identifier(table_name)
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"SHOW COLUMNS FROM {safe_table_name}")
+            rows = cursor.fetchall()
+    except Exception:
+        return set()
+
+    columns = set()
+
+    for row in rows:
+        field_name = row.get("Field") or row.get("field")
+
+        if field_name:
+            columns.add(str(field_name))
+
+    return columns
+
+
+def first_existing_column(columns: set, candidates: List[str]) -> Optional[str]:
+    for column in candidates:
+        if column in columns:
+            return column
+
+    return None
+
+
+def build_like_expression(alias: str, column_name: str) -> str:
+    return f"CAST({alias}.{quote_identifier(column_name)} AS CHAR)"
+
+
+def append_existing_column_expressions(
+    expressions: List[str],
+    alias: str,
+    columns: set,
+    candidates: List[str],
+) -> None:
+    for column in candidates:
+        if column in columns:
+            expressions.append(build_like_expression(alias, column))
+
+
+def append_name_concat_expression(
+    expressions: List[str],
+    alias: str,
+    columns: set,
+    first_name_candidates: List[str],
+    last_name_candidates: List[str],
+) -> None:
+    first_name_column = first_existing_column(columns, first_name_candidates)
+    last_name_column = first_existing_column(columns, last_name_candidates)
+
+    if first_name_column and last_name_column:
+        expressions.append(
+            f"CONCAT_WS(' ', {alias}.{quote_identifier(first_name_column)}, {alias}.{quote_identifier(last_name_column)})"
+        )
+
+
+def collect_submitted_contact_filter_items(
+    search: Optional[str] = None,
+    search_by: Optional[str] = None,
+    filters: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+
+    search_by_value = str(search_by or "").strip().lower()
+    search_value = str(search or "").strip()
+
+    if search_value and search_by_value in SUBMITTED_CONTACT_FIELDS:
+        items.append(
+            {
+                "field": search_by_value,
+                "operator": "like",
+                "value": search_value,
+            }
+        )
+
+    if not filters:
+        return items
+
+    for item in filters:
+        if not isinstance(item, dict):
+            continue
+
+        field = str(item.get("field") or "").strip().lower()
+
+        if field not in SUBMITTED_CONTACT_FIELDS:
+            continue
+
+        items.append(
+            {
+                "field": field,
+                "operator": str(item.get("operator") or "like").strip().lower(),
+                "value": item.get("value"),
+            }
+        )
+
+    return items
+
+
+def build_submitted_contact_expressions(
+    link_columns: set,
+    contact_columns: set,
+    has_contact_join: bool,
+    field_group: str,
+) -> List[str]:
+    expressions: List[str] = []
+
+    link_name_columns = [
+        "name",
+        "full_name",
+        "contact_name",
+        "visitor_name",
+        "visitors_name",
+        "submitted_name",
+        "first_name",
+        "firstname",
+        "last_name",
+        "lastname",
+    ]
+
+    link_email_columns = [
+        "email",
+        "contact_email",
+        "submitted_email",
+        "visitor_email",
+        "email_id",
+        "emailid",
+    ]
+
+    link_phone_columns = [
+        "phone",
+        "contact_phone",
+        "submitted_phone",
+        "visitor_phone",
+        "mobile",
+        "mobile_no",
+        "mobileno",
+        "phone_number",
+        "phonenumber",
+        "whatsapp",
+        "whatsappno",
+    ]
+
+    link_company_columns = [
+        "company",
+        "company_name",
+        "organization",
+        "organisation",
+    ]
+
+    contact_name_columns = [
+        "name",
+        "full_name",
+        "contact_name",
+        "contactname",
+        "first_name",
+        "firstname",
+        "last_name",
+        "lastname",
+    ]
+
+    contact_email_columns = [
+        "email",
+        "contact_email",
+        "email_id",
+        "emailid",
+        "primary_email",
+    ]
+
+    contact_phone_columns = [
+        "phone",
+        "contact_phone",
+        "primary_phone",
+        "mobile",
+        "mobile_no",
+        "mobileno",
+        "phone_number",
+        "phonenumber",
+        "whatsapp",
+        "whatsappno",
+    ]
+
+    contact_company_columns = [
+        "company",
+        "company_name",
+        "organization",
+        "organisation",
+    ]
+
+    if field_group in ["all", "name"]:
+        append_existing_column_expressions(expressions, "llv", link_columns, link_name_columns)
+        append_name_concat_expression(
+            expressions,
+            "llv",
+            link_columns,
+            ["first_name", "firstname"],
+            ["last_name", "lastname"],
+        )
+
+        if has_contact_join:
+            append_existing_column_expressions(expressions, "cc", contact_columns, contact_name_columns)
+            append_name_concat_expression(
+                expressions,
+                "cc",
+                contact_columns,
+                ["first_name", "firstname"],
+                ["last_name", "lastname"],
+            )
+
+    if field_group in ["all", "email"]:
+        append_existing_column_expressions(expressions, "llv", link_columns, link_email_columns)
+
+        if has_contact_join:
+            append_existing_column_expressions(expressions, "cc", contact_columns, contact_email_columns)
+
+    if field_group in ["all", "phone"]:
+        append_existing_column_expressions(expressions, "llv", link_columns, link_phone_columns)
+
+        if has_contact_join:
+            append_existing_column_expressions(expressions, "cc", contact_columns, contact_phone_columns)
+
+    if field_group == "all":
+        append_existing_column_expressions(expressions, "llv", link_columns, link_company_columns)
+
+        if has_contact_join:
+            append_existing_column_expressions(expressions, "cc", contact_columns, contact_company_columns)
+
+    # Remove duplicate expressions while keeping order.
+    unique_expressions: List[str] = []
+    seen = set()
+
+    for expression in expressions:
+        if expression in seen:
+            continue
+
+        seen.add(expression)
+        unique_expressions.append(expression)
+
+    return unique_expressions
+
+
+def build_submitted_contact_condition(
+    connection,
+    search: Optional[str] = None,
+    search_by: Optional[str] = None,
+    filters: Optional[List[Dict[str, Any]]] = None,
+) -> Tuple[str, List[Any]]:
+    filter_items = collect_submitted_contact_filter_items(
+        search=search,
+        search_by=search_by,
+        filters=filters,
+    )
+
+    if not filter_items:
+        return "", []
+
+    link_table = get_existing_table_name(
+        connection,
+        ["lk_link_visit", "lk_link_visits"],
+    )
+
+    if not link_table:
+        return "1=0", []
+
+    link_columns = get_table_columns(connection, link_table)
+
+    embed_column = first_existing_column(
+        link_columns,
+        ["embed_id", "form_embed_id", "leadform_embed_id"],
+    )
+
+    if not embed_column:
+        return "1=0", []
+
+    contact_table = get_existing_table_name(
+        connection,
+        ["lk_central_contacts"],
+    )
+
+    contact_columns = get_table_columns(connection, contact_table)
+
+    link_contact_column = first_existing_column(
+        link_columns,
+        ["contact_id", "central_contact_id", "lead_contact_id"],
+    )
+
+    has_contact_join = bool(
+        contact_table
+        and link_contact_column
+        and "contact_id" in contact_columns
+    )
+
+    contact_join_sql = ""
+
+    if has_contact_join:
+        contact_join_sql = f"""
+            LEFT JOIN {quote_identifier(contact_table)} cc
+                ON cc.contact_id = llv.{quote_identifier(link_contact_column)}
+        """
+
+    item_conditions: List[str] = []
+    params: List[Any] = []
+
+    for item in filter_items:
+        field = str(item.get("field") or "").strip().lower()
+        operator = str(item.get("operator") or "like").strip().lower()
+        values = split_filter_values(item.get("value"))
+
+        if not values:
+            continue
+
+        field_group = SUBMITTED_CONTACT_FIELD_ALIASES.get(field, "all")
+        expressions = build_submitted_contact_expressions(
+            link_columns=link_columns,
+            contact_columns=contact_columns,
+            has_contact_join=has_contact_join,
+            field_group=field_group,
+        )
+
+        if not expressions:
+            continue
+
+        value_conditions: List[str] = []
+
+        for value in values:
+            value_string = str(value or "").strip()
+
+            if not value_string:
+                continue
+
+            expression_conditions: List[str] = []
+
+            if operator == "eq":
+                for expression in expressions:
+                    expression_conditions.append(f"{expression} = %s")
+                    params.append(value_string)
+            elif operator == "neq":
+                for expression in expressions:
+                    expression_conditions.append(f"{expression} <> %s")
+                    params.append(value_string)
+            elif operator == "starts_with":
+                for expression in expressions:
+                    expression_conditions.append(f"{expression} LIKE %s")
+                    params.append(f"{value_string}%")
+            elif operator == "ends_with":
+                for expression in expressions:
+                    expression_conditions.append(f"{expression} LIKE %s")
+                    params.append(f"%{value_string}")
+            else:
+                for expression in expressions:
+                    expression_conditions.append(f"{expression} LIKE %s")
+                    params.append(f"%{value_string}%")
+
+            if expression_conditions:
+                value_conditions.append("(" + " OR ".join(expression_conditions) + ")")
+
+        if value_conditions:
+            item_conditions.append("(" + " OR ".join(value_conditions) + ")")
+
+    if not item_conditions:
+        return "1=0", []
+
+    sql = f"""
+        EXISTS (
+            SELECT 1
+            FROM {quote_identifier(link_table)} llv
+            INNER JOIN leadform_form_embed lfe_submitted_contact
+                ON lfe_submitted_contact.id = llv.{quote_identifier(embed_column)}
+            {contact_join_sql}
+            WHERE lfe_submitted_contact.form_id = lf.id
+              AND lfe_submitted_contact.active_status <> 'deleted'
+              AND ({" AND ".join(item_conditions)})
+        )
+    """
+
+    return sql, params
 
 
 def fetch_leadform_embeds(
@@ -1056,6 +1525,17 @@ def fetch_leadforms(
 
     try:
         connection = get_client_connection(client_database)
+
+        submitted_contact_where, submitted_contact_params = build_submitted_contact_condition(
+            connection=connection,
+            search=search,
+            search_by=search_by,
+            filters=filters,
+        )
+
+        if submitted_contact_where:
+            where_clause = f"{where_clause} AND {submitted_contact_where}"
+            where_params = where_params + submitted_contact_params
 
         count_sql = f"""
             SELECT COUNT(*) AS total_records
@@ -1191,6 +1671,17 @@ def count_leadforms(
 
     try:
         connection = get_client_connection(client_database)
+
+        submitted_contact_where, submitted_contact_params = build_submitted_contact_condition(
+            connection=connection,
+            search=search,
+            search_by=search_by,
+            filters=filters,
+        )
+
+        if submitted_contact_where:
+            where_clause = f"{where_clause} AND {submitted_contact_where}"
+            where_params = where_params + submitted_contact_params
 
         sql = f"""
             SELECT COUNT(*) AS total_records
