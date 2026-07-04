@@ -1,10 +1,10 @@
-# Auto-generated LogiKlu API usage data with Leadforms and Roles.
+# Auto-generated LogiKlu API usage data with Leadforms, Roles, and Users.
 # Replace the matching app/core file with this file.
 
 API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
  'subtitle': 'Client-facing developer guide for LogiKlu Focus Account Intelligence, Focus Contacts, Campaigns, and '
-             'Leadforms APIs using OAuth 2.0 Bearer JWT authentication, including submitted contact search for '
-             'Leadforms and static Roles APIs.',
+             'Leadforms, Users APIs using OAuth 2.0 Bearer JWT authentication, including submitted contact search for '
+             'Leadforms, Users and Roles APIs.',
  'base_url': 'https://api.logiklu.com',
  'sandbox_base_url': 'https://sandboxapi.logiklu.com',
  'local_base_url': 'http://127.0.0.1:8000',
@@ -31,7 +31,7 @@ API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
                                                  'token_type': 'Bearer',
                                                  'expires_in': 'Token lifetime in seconds. Current default is 900 '
                                                                'seconds.',
-                                                 'scope': 'Allowed API permissions/scopes. roles:read'}}},
+                                                 'scope': 'Allowed API permissions/scopes. roles:read users:read.'}}},
  'response_format': {'success': {'status': 'success',
                                  'message': 'Focus API request successful',
                                  'meta': {'generated_at': '2026-07-03T13:30:00+00:00',
@@ -111,15 +111,24 @@ API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
                            'embed_id/form_embed_id/leadform_embed_id, then map to leadform_form_embed.id and '
                            'leadform_form.id. When contact_id is present, lk_central_contacts is also searched for '
                            'name, email, phone, and company fields.'},
-           {'title': 'Static roles',
-            'description': '/roles returns a static LogiKlu CRM role catalogue. These records are not read from a '
-                           'client database.'},
+           {'title': 'Role catalogue',
+            'description': '/roles returns active assignable user roles in configured display order.'},
+           {'title': 'Role filtering rule',
+            'description': 'Only active assignable roles are returned. Results follow the configured display order.'},
            {'title': 'Role codes',
-            'description': 'Role codes are unique stable identifiers: clientsuperadmin, clientadmin, dataadmin, '
+            'description': 'Role codes are unique stable identifiers such as clientsuperadmin, clientadmin, dataadmin, '
                            'supervisor, clientuser, and leadresearcher.'},
-           {'title': 'Field hierarchy roles',
-            'description': 'Supervisor and Sales Person roles are field hierarchy roles. Administrative/software roles '
-                           'such as Client Super Admin do not have child users.'}],
+           {'title': 'Role response fields',
+            'description': 'Role responses return role_id, role_code, role_name, parent_id, and description.'},
+           {'title': 'Users',
+            'description': 'The Users API returns client users with profile information, master role, status, latest '
+                           'login date, and product permissions.'},
+           {'title': 'Users response ID',
+            'description': 'The id returned by the Users API is the primary LogiKlu user ID. Internal user IDs are not '
+                           'returned.'},
+           {'title': 'Users product permissions',
+            'description': 'product_permissions returns product name and permission group role details for each '
+                           'assigned product.'}],
  'sections': [{'id': 'authentication',
                'title': 'OAuth / JWT Authentication',
                'description': 'Generate a Bearer access token using client credentials, then call protected APIs with '
@@ -162,7 +171,7 @@ API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
                                                    'token_type': 'Bearer',
                                                    'expires_in': 900,
                                                    'scope': 'focus:account-intelligence:read focus:contacts:read '
-                                                            'leadforms:read roles:read'}}]},
+                                                            'leadforms:read roles:read users:read'}}]},
               {'id': 'focus-account-intelligence',
                'title': 'Focus Account Intelligence',
                'description': 'Use Focus Account Intelligence APIs to read LogiKlu Focus buying-intent signals, score '
@@ -2503,30 +2512,29 @@ API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
                                                                                                                                   '16:35:00'}}]}}}}]},
               {'id': 'roles',
                'title': 'Roles',
-               'description': 'Use Roles APIs to read the static LogiKlu CRM role catalogue. Roles are not fetched '
-                              'from a database; each role is returned with a unique role_code, display name, '
-                              'description, and active flag.',
+               'description': 'Use Roles APIs to read active assignable roles available for users. Roles are returned '
+                              'in configured display order.',
                'endpoints': [{'id': 'roles-list',
                               'title': 'Roles List',
                               'method': 'GET',
                               'path': '/roles',
-                              'purpose': 'Fetch the static list of available CRM roles. The endpoint supports optional '
-                                         'search and role_code filtering. Returned roles include administrative, data '
-                                         'administration, field hierarchy, sales, and lead research roles.',
+                              'purpose': 'Fetch active assignable roles. The list supports optional search and '
+                                         'role_code filtering.',
                               'auth_type': 'bearer',
                               'request_type': 'Query Parameters',
                               'parameters': [{'name': 'search',
                                               'type': 'string',
                                               'required': 'No',
                                               'example': 'admin',
-                                              'description': 'Search across role_code, role_name, and description.'},
+                                              'description': 'Search across role code, role name, and description.'},
                                              {'name': 'role_code',
                                               'type': 'string',
                                               'required': 'No',
                                               'example': 'clientadmin',
-                                              'description': 'Filter the static list by one exact role code.'}],
-                              'examples': [{'title': 'Fetch all roles',
-                                            'description': 'Return the complete static role catalogue.',
+                                              'description': 'Filter by one exact role code.'}],
+                              'examples': [{'title': 'Fetch active roles',
+                                            'description': 'Return active roles from the master database where '
+                                                           'is_active = 1 and parent_id > 0.',
                                             'path': '/roles',
                                             'query': {}},
                                            {'title': 'Search roles',
@@ -2535,7 +2543,7 @@ API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
                                             'path': '/roles',
                                             'query': {'search': 'admin'}},
                                            {'title': 'Filter by role code',
-                                            'description': 'Return only the Client Admin role from the static list.',
+                                            'description': 'Return the active role matching the provided role_code.',
                                             'path': '/roles',
                                             'query': {'role_code': 'clientadmin'}}],
                               'response_example': {'status': 'success',
@@ -2545,12 +2553,14 @@ API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
                                                             'role_code': None,
                                                             'record_count': 6},
                                                    'data': {'schema_version': 'logiklu_role.v1',
-                                                            'roles': [{'role_code': 'clientsuperadmin',
+                                                            'roles': [{'role_id': 1,
+                                                                       'role_code': 'clientsuperadmin',
                                                                        'role_name': 'Client Super Admin',
+                                                                       'parent_id': 1,
                                                                        'description': 'Client Super Admin users have '
                                                                                       'full access across the client '
                                                                                       'account. They can view all '
-                                                                                      'records, manage all CRM data '
+                                                                                      'records, manage business data '
                                                                                       'such as leads, deals, contacts, '
                                                                                       'and activities, create records '
                                                                                       'for any user, manage all '
@@ -2563,14 +2573,15 @@ API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
                                                                                       'market-facing role. This role '
                                                                                       'cannot have child users because '
                                                                                       'it is not part of the field '
-                                                                                      'hierarchy.',
-                                                                       'is_active': True},
-                                                                      {'role_code': 'clientadmin',
+                                                                                      'hierarchy.'},
+                                                                      {'role_id': 2,
+                                                                       'role_code': 'clientadmin',
                                                                        'role_name': 'Client Admin',
+                                                                       'parent_id': 1,
                                                                        'description': 'Client Admin users have access '
                                                                                       'similar to Client Super Admin '
                                                                                       'users, including broad access '
-                                                                                      'to CRM records, users, and '
+                                                                                      'to records, users, and '
                                                                                       'operational data. The key '
                                                                                       'difference is that they cannot '
                                                                                       'add admin-level users directly. '
@@ -2579,24 +2590,26 @@ API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
                                                                                       'Admin. Other than this approval '
                                                                                       'restriction, their access is '
                                                                                       'largely similar to the Client '
-                                                                                      'Super Admin role.',
-                                                                       'is_active': True},
-                                                                      {'role_code': 'dataadmin',
+                                                                                      'Super Admin role.'},
+                                                                      {'role_id': 3,
+                                                                       'role_code': 'dataadmin',
                                                                        'role_name': 'Client Data Admin',
+                                                                       'parent_id': 1,
                                                                        'description': 'Client Data Admin users can '
-                                                                                      'manage CRM data such as leads, '
-                                                                                      'deals, contacts, and '
+                                                                                      'manage business data such as '
+                                                                                      'leads, deals, contacts, and '
                                                                                       'activities. They can add and '
-                                                                                      'update operational CRM records, '
-                                                                                      'but they cannot view or modify '
+                                                                                      'update operational records, but '
+                                                                                      'they cannot view or modify '
                                                                                       'system settings. This role is '
                                                                                       'intended for users responsible '
-                                                                                      'for maintaining CRM data '
-                                                                                      'without administrative '
-                                                                                      'configuration access.',
-                                                                       'is_active': True},
-                                                                      {'role_code': 'supervisor',
+                                                                                      'for maintaining data without '
+                                                                                      'administrative configuration '
+                                                                                      'access.'},
+                                                                      {'role_id': 4,
+                                                                       'role_code': 'supervisor',
                                                                        'role_name': 'Manager',
+                                                                       'parent_id': 1,
                                                                        'description': 'Manager users are part of the '
                                                                                       'field hierarchy. They can '
                                                                                       'manage their own leads, deals, '
@@ -2610,23 +2623,25 @@ API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
                                                                                       'own hierarchy, and such user '
                                                                                       'creation requires approval from '
                                                                                       'a Client Admin or Client Super '
-                                                                                      'Admin.',
-                                                                       'is_active': True},
-                                                                      {'role_code': 'clientuser',
+                                                                                      'Admin.'},
+                                                                      {'role_id': 5,
+                                                                       'role_code': 'clientuser',
                                                                        'role_name': 'Sales Person',
+                                                                       'parent_id': 4,
                                                                        'description': 'Sales Person users are field '
-                                                                                      'workers with limited CRM '
-                                                                                      'access. They can manage their '
-                                                                                      'own leads, deals, contacts, and '
+                                                                                      'workers with limited access. '
+                                                                                      'They can manage their own '
+                                                                                      'leads, deals, contacts, and '
                                                                                       'activities, but they cannot '
                                                                                       'create or manage subordinate '
                                                                                       'users. This role is intended '
                                                                                       'for sales representatives who '
                                                                                       'work on assigned or self-owned '
-                                                                                      'CRM records.',
-                                                                       'is_active': True},
-                                                                      {'role_code': 'leadresearcher',
+                                                                                      'records.'},
+                                                                      {'role_id': 6,
+                                                                       'role_code': 'leadresearcher',
                                                                        'role_name': 'Lead Researcher',
+                                                                       'parent_id': 1,
                                                                        'description': 'Lead Researcher users are '
                                                                                       'responsible for researching and '
                                                                                       'adding leads. They have access '
@@ -2636,35 +2651,31 @@ API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
                                                                                       'representatives. This role is '
                                                                                       'focused on lead discovery and '
                                                                                       'data entry, without access to '
-                                                                                      'deals, broader CRM operations, '
+                                                                                      'deals, broader operations, '
                                                                                       'settings, or hierarchy '
-                                                                                      'management.',
-                                                                       'is_active': True}]}},
-                              'search_by_options': [{'name': 'search',
-                                                     'example': 'admin',
-                                                     'description': 'General role search across role_code, role_name, '
-                                                                    'and description.'},
-                                                    {'name': 'role_code',
-                                                     'example': 'leadresearcher',
-                                                     'description': 'Exact role code filter. Valid values are '
-                                                                    'clientsuperadmin, clientadmin, dataadmin, '
-                                                                    'supervisor, clientuser, and leadresearcher.'}]},
+                                                                                      'management.'}]}},
+                              'multi_field_filters': [{'name': 'search',
+                                                       'example': 'admin',
+                                                       'description': 'General role search across role_code, '
+                                                                      'role_name, and description.'},
+                                                      {'name': 'role_code',
+                                                       'example': 'clientadmin',
+                                                       'description': 'Exact role code from role code.'}]},
                              {'id': 'roles-detail',
                               'title': 'Role Detail',
                               'method': 'GET',
                               'path': '/roles/{role_code}',
-                              'purpose': 'Fetch one static role definition by its unique role_code.',
+                              'purpose': 'Fetch one active role by role code.',
                               'auth_type': 'bearer',
                               'request_type': 'Path Parameter',
                               'parameters': [{'name': 'role_code',
                                               'type': 'string',
                                               'required': 'Yes',
                                               'example': 'clientadmin',
-                                              'description': 'Unique static role code. Valid values are '
-                                                             'clientsuperadmin, clientadmin, dataadmin, supervisor, '
-                                                             'clientuser, and leadresearcher.'}],
+                                              'description': 'Unique role code.'}],
                               'examples': [{'title': 'Fetch Client Admin role',
-                                            'description': 'Return the static role definition for Client Admin.',
+                                            'description': 'Return the Client Admin role if it is active and has '
+                                                           'parent_id > 0.',
                                             'path': '/roles/clientadmin',
                                             'query': {}}],
                               'response_example': {'status': 'success',
@@ -2672,22 +2683,501 @@ API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
                                                    'meta': {'generated_at': '2026-07-04T08:30:00+00:00',
                                                             'role_code': 'clientadmin'},
                                                    'data': {'schema_version': 'logiklu_role.v1',
-                                                            'role': {'role_code': 'clientadmin',
+                                                            'role': {'role_id': 2,
+                                                                     'role_code': 'clientadmin',
                                                                      'role_name': 'Client Admin',
+                                                                     'parent_id': 1,
                                                                      'description': 'Client Admin users have access '
                                                                                     'similar to Client Super Admin '
                                                                                     'users, including broad access to '
-                                                                                    'CRM records, users, and '
-                                                                                    'operational data. The key '
-                                                                                    'difference is that they cannot '
-                                                                                    'add admin-level users directly. '
-                                                                                    'Admin user creation requires '
-                                                                                    'approval from a Client Super '
-                                                                                    'Admin. Other than this approval '
-                                                                                    'restriction, their access is '
-                                                                                    'largely similar to the Client '
-                                                                                    'Super Admin role.',
-                                                                     'is_active': True}}}}]}],
+                                                                                    'records, users, and operational '
+                                                                                    'data. The key difference is that '
+                                                                                    'they cannot add admin-level users '
+                                                                                    'directly. Admin user creation '
+                                                                                    'requires approval from a Client '
+                                                                                    'Super Admin. Other than this '
+                                                                                    'approval restriction, their '
+                                                                                    'access is largely similar to the '
+                                                                                    'Client Super Admin role.'}}}}]},
+              {'id': 'users',
+               'title': 'Users',
+               'description': 'Use Users APIs to read client users with profile information, master role, status, '
+                              'latest login date, and product permissions.',
+               'endpoints': [{'id': 'users-list',
+                              'title': 'Users List',
+                              'method': 'GET',
+                              'path': '/users',
+                              'purpose': 'Fetch client users with profile details, master role, account status, latest '
+                                         'login date, and assigned product permissions.',
+                              'auth_type': 'bearer',
+                              'request_type': 'Query Parameters',
+                              'parameters': [{'name': 'page',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '1',
+                                              'description': 'Page number. Starts from 1. Default is 1.'},
+                                             {'name': 'per_page',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '10',
+                                              'description': 'Number of users per page. Maximum value is 100.'},
+                                             {'name': 'search',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Alex',
+                                              'description': 'General search across user name, email, phone, address, '
+                                                             'master role, status, product permission, company, '
+                                                             'designation, and username fields where available.'},
+                                             {'name': 'search_by',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'email',
+                                              'description': 'Search only one selected field. Example values: name, '
+                                                             'email, phone, master_role, role_code, product, '
+                                                             'permission_group_name, registration_date, '
+                                                             'last_login_date.'},
+                                             {'name': 'filters',
+                                              'type': 'JSON string',
+                                              'required': 'No',
+                                              'example': '[{"field":"registration_date","operator":"from","value":"2021-01-01"}]',
+                                              'description': 'Advanced JSON filters for field/operator/value '
+                                                             'filtering. Useful for date ranges and advanced operators '
+                                                             'such as eq, like, in, from, to, and between.'},
+                                             {'name': 'include_archived',
+                                              'type': 'boolean',
+                                              'required': 'No',
+                                              'example': 'false',
+                                              'description': 'When false, archived users are excluded. Use true only '
+                                                             'when archived users should also be returned.'},
+                                             {'name': 'sort_by',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'name',
+                                              'description': 'Sort users by a supported field. Examples: id, name, '
+                                                             'first_name, last_name, email, master_role, role_name, '
+                                                             'status, registration_date, last_login_date.'},
+                                             {'name': 'sort_order',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'asc',
+                                              'description': 'Sort direction for supported sort_by values. Allowed '
+                                                             'values: asc, desc.'},
+                                             {'name': 'id',
+                                              'type': 'integer/string',
+                                              'required': 'No',
+                                              'example': '6717',
+                                              'description': 'Filter by user ID. Comma-separated values are '
+                                                             'supported.'},
+                                             {'name': 'parent_id',
+                                              'type': 'integer/string',
+                                              'required': 'No',
+                                              'example': '6717',
+                                              'description': 'Filter by parent user ID.'},
+                                             {'name': 'name',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Alex',
+                                              'description': 'Filter by full name, first name, middle name, or last '
+                                                             'name.'},
+                                             {'name': 'first_name',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Alex',
+                                              'description': 'Filter by first name.'},
+                                             {'name': 'middle_name',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Kumar',
+                                              'description': 'Filter by middle name.'},
+                                             {'name': 'last_name',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Hans',
+                                              'description': 'Filter by last name.'},
+                                             {'name': 'email',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'logikluenterprise@gmail.com',
+                                              'description': 'Filter by user email or partial email/domain.'},
+                                             {'name': 'phone',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': '9876',
+                                              'description': 'Filter by phone, mobile phone, business phone, or client '
+                                                             'user phone.'},
+                                             {'name': 'address',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Kolkata',
+                                              'description': 'Filter by user address.'},
+                                             {'name': 'city',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Kolkata',
+                                              'description': 'Filter by city.'},
+                                             {'name': 'state',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'West Bengal',
+                                              'description': 'Filter by state.'},
+                                             {'name': 'zip',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': '700001',
+                                              'description': 'Filter by ZIP/postal code.'},
+                                             {'name': 'country',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'India',
+                                              'description': 'Filter by country.'},
+                                             {'name': 'role_code',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'clientsuperadmin',
+                                              'description': 'Filter by master role code. This maps to client database '
+                                                             'master role code and master database role code.'},
+                                             {'name': 'master_role',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Client Super Admin',
+                                              'description': 'Filter by master role code or master role name.'},
+                                             {'name': 'role_name',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Client Super Admin',
+                                              'description': 'Filter by master role display name.'},
+                                             {'name': 'status',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'ACTIVE',
+                                              'description': 'Filter by client user status. Supported values are '
+                                                             'ACTIVE and INACTIVE. API response displays Active or '
+                                                             'Inactive.'},
+                                             {'name': 'registration_date',
+                                              'type': 'date/datetime',
+                                              'required': 'No',
+                                              'example': '2021-02-24',
+                                              'description': 'Filter/search by registration date from master database '
+                                                             'registration date.'},
+                                             {'name': 'last_login_date',
+                                              'type': 'date/datetime',
+                                              'required': 'No',
+                                              'example': '2026-07-03',
+                                              'description': 'Filter/search by latest login date from master database '
+                                                             'latest login date.'},
+                                             {'name': 'company',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'LogiKlu',
+                                              'description': 'Filter by company value from master user profile where '
+                                                             'available.'},
+                                             {'name': 'designation',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Manager',
+                                              'description': 'Filter by designation/title from master user profile '
+                                                             'where available.'},
+                                             {'name': 'username',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'logikluenterprise@gmail.com',
+                                              'description': 'Filter by username from master user profile where '
+                                                             'available.'},
+                                             {'name': 'product',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'CRM',
+                                              'description': 'Filter by assigned product. Supported values: CRM and '
+                                                             'LEADANALYTICS.'},
+                                             {'name': 'product_code',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'LEADANALYTICS',
+                                              'description': 'Alias for product filter. Although product code is '
+                                                             'accepted for filtering, product_permissions response '
+                                                             'shows the product name and permission group only.'},
+                                             {'name': 'permission_group',
+                                              'type': 'integer/string',
+                                              'required': 'No',
+                                              'example': '5',
+                                              'description': 'Filter by permission group ID.'},
+                                             {'name': 'permission_group_id',
+                                              'type': 'integer/string',
+                                              'required': 'No',
+                                              'example': '5',
+                                              'description': 'Alias for permission_group.'},
+                                             {'name': 'permission_group_code',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'clientsuperadmin',
+                                              'description': 'Filter by permission group role code.'},
+                                             {'name': 'permission_group_name',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Client Super Admin',
+                                              'description': 'Filter by permission group role name.'}],
+                              'examples': [{'title': 'First page',
+                                            'description': 'Fetch the first page of users.',
+                                            'path': '/users',
+                                            'query': {'page': 1, 'per_page': 10}},
+                                           {'title': 'General user search',
+                                            'description': 'Search users across name, email, role, product, and '
+                                                           'profile fields.',
+                                            'path': '/users',
+                                            'query': {'search': 'Alex', 'page': 1, 'per_page': 10}},
+                                           {'title': 'Filter by role code',
+                                            'description': 'Return users with the selected master role.',
+                                            'path': '/users',
+                                            'query': {'role_code': 'clientsuperadmin', 'page': 1, 'per_page': 10}},
+                                           {'title': 'Filter by product assignment',
+                                            'description': 'Return users assigned to Sales CRM.',
+                                            'path': '/users',
+                                            'query': {'product': 'CRM', 'page': 1, 'per_page': 10}},
+                                           {'title': 'Filter by Lead Actuator assignment',
+                                            'description': 'Return users assigned to Lead Actuator.',
+                                            'path': '/users',
+                                            'query': {'product': 'LEADANALYTICS', 'page': 1, 'per_page': 10}},
+                                           {'title': 'Filter by permission group role',
+                                            'description': 'Return users whose product permission group role is Client '
+                                                           'Super Admin.',
+                                            'path': '/users',
+                                            'query': {'permission_group_code': 'clientsuperadmin',
+                                                      'page': 1,
+                                                      'per_page': 10}},
+                                           {'title': 'Filter by active users',
+                                            'description': 'Return only active users.',
+                                            'path': '/users',
+                                            'query': {'status': 'ACTIVE', 'page': 1, 'per_page': 10}},
+                                           {'title': 'Registration date range',
+                                            'description': 'Use advanced JSON filters for registration date ranges.',
+                                            'path': '/users',
+                                            'query': {'filters': '[{"field":"registration_date","operator":"from","value":"2021-01-01"}]',
+                                                      'page': 1,
+                                                      'per_page': 10}},
+                                           {'title': 'Sort by latest login',
+                                            'description': 'Sort users by last login date descending.',
+                                            'path': '/users',
+                                            'query': {'sort_by': 'last_login_date',
+                                                      'sort_order': 'desc',
+                                                      'page': 1,
+                                                      'per_page': 10}}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'Users fetched successfully',
+                                                   'meta': {'generated_at': '2026-07-04T10:00:00+00:00',
+                                                            'search': None,
+                                                            'search_by': None,
+                                                            'applied_filters': [],
+                                                            'include_archived': False,
+                                                            'sort_by': None,
+                                                            'sort_order': 'asc',
+                                                            'page': 1,
+                                                            'per_page': 10,
+                                                            'offset': 0,
+                                                            'record_count': 1,
+                                                            'total_records': 1,
+                                                            'total_pages': 1,
+                                                            'has_next': False,
+                                                            'has_previous': False},
+                                                   'data': {'schema_version': 'logiklu_user.v1',
+                                                            'users': [{'id': 6717,
+                                                                       'parent_id': None,
+                                                                       'master_role': {'name': 'Client Super Admin',
+                                                                                       'code': 'clientsuperadmin'},
+                                                                       'name': 'Alex Hans',
+                                                                       'first_name': 'Alex',
+                                                                       'middle_name': None,
+                                                                       'last_name': 'Hans',
+                                                                       'email': 'logikluenterprise@gmail.com',
+                                                                       'phone': '',
+                                                                       'address': {'address': 'test',
+                                                                                   'city': 'test',
+                                                                                   'state': 'Kentucky',
+                                                                                   'zip': '56789',
+                                                                                   'country': None},
+                                                                       'status': 'Active',
+                                                                       'registration_date': '2021-02-24 06:33:57',
+                                                                       'last_login_date': '2026-07-03 16:50:05',
+                                                                       'product_permissions': [{'product': {'name': 'Sales '
+                                                                                                                    'CRM',
+                                                                                                            'permission_group': {'id': 5,
+                                                                                                                                 'role_code': 'clientsuperadmin',
+                                                                                                                                 'role_name': 'Client '
+                                                                                                                                              'Super '
+                                                                                                                                              'Admin'}}},
+                                                                                               {'product': {'name': 'Lead '
+                                                                                                                    'Actuator',
+                                                                                                            'permission_group': {'id': 5,
+                                                                                                                                 'role_code': 'clientsuperadmin',
+                                                                                                                                 'role_name': 'Client '
+                                                                                                                                              'Super '
+                                                                                                                                              'Admin'}}}]}]}},
+                              'multi_field_filters': [{'name': 'id',
+                                                       'example': '6717',
+                                                       'description': 'Global user ID returned as id in API response.'},
+                                                      {'name': 'parent_id',
+                                                       'example': '6717',
+                                                       'description': 'Parent user ID.'},
+                                                      {'name': 'name',
+                                                       'example': 'Alex',
+                                                       'description': 'Full name / first name / middle name / last '
+                                                                      'name.'},
+                                                      {'name': 'email',
+                                                       'example': 'gmail.com',
+                                                       'description': 'Email or partial email/domain.'},
+                                                      {'name': 'phone',
+                                                       'example': '9876',
+                                                       'description': 'Phone, mobile phone, business phone, or client '
+                                                                      'phone.'},
+                                                      {'name': 'city',
+                                                       'example': 'Kolkata',
+                                                       'description': 'User city.'},
+                                                      {'name': 'state',
+                                                       'example': 'West Bengal',
+                                                       'description': 'User state.'},
+                                                      {'name': 'country',
+                                                       'example': 'India',
+                                                       'description': 'User country.'},
+                                                      {'name': 'role_code',
+                                                       'example': 'clientsuperadmin',
+                                                       'description': 'Master role code.'},
+                                                      {'name': 'master_role',
+                                                       'example': 'Client Super Admin',
+                                                       'description': 'Master role code or role name.'},
+                                                      {'name': 'role_name',
+                                                       'example': 'Client Super Admin',
+                                                       'description': 'Master role display name.'},
+                                                      {'name': 'status',
+                                                       'example': 'ACTIVE',
+                                                       'description': 'Client user status. Response displays Active or '
+                                                                      'Inactive.'},
+                                                      {'name': 'registration_date',
+                                                       'example': '2021-02-24',
+                                                       'description': 'Registration date.'},
+                                                      {'name': 'last_login_date',
+                                                       'example': '2026-07-03',
+                                                       'description': 'Latest login date.'},
+                                                      {'name': 'company',
+                                                       'example': 'LogiKlu',
+                                                       'description': 'Company value from master user profile.'},
+                                                      {'name': 'designation',
+                                                       'example': 'Manager',
+                                                       'description': 'Designation/title from master user profile.'},
+                                                      {'name': 'product',
+                                                       'example': 'CRM',
+                                                       'description': 'Product assignment. Supported values: CRM and '
+                                                                      'LEADANALYTICS.'},
+                                                      {'name': 'permission_group',
+                                                       'example': '5',
+                                                       'description': 'Permission group role ID.'},
+                                                      {'name': 'permission_group_code',
+                                                       'example': 'clientsuperadmin',
+                                                       'description': 'Permission group role code.'},
+                                                      {'name': 'permission_group_name',
+                                                       'example': 'Client Super Admin',
+                                                       'description': 'Permission group role name.'}],
+                              'search_by_options': [{'name': 'name',
+                                                     'example': 'Alex',
+                                                     'description': 'Search user name only.'},
+                                                    {'name': 'email',
+                                                     'example': 'gmail.com',
+                                                     'description': 'Search user email only.'},
+                                                    {'name': 'phone',
+                                                     'example': '9876',
+                                                     'description': 'Search phone values only.'},
+                                                    {'name': 'master_role',
+                                                     'example': 'Client Super Admin',
+                                                     'description': 'Search master role code or role name.'},
+                                                    {'name': 'role_code',
+                                                     'example': 'clientsuperadmin',
+                                                     'description': 'Search/filter role code only.'},
+                                                    {'name': 'role_name',
+                                                     'example': 'Client Super Admin',
+                                                     'description': 'Search role name only.'},
+                                                    {'name': 'status',
+                                                     'example': 'ACTIVE',
+                                                     'description': 'Search/filter status only.'},
+                                                    {'name': 'product',
+                                                     'example': 'CRM',
+                                                     'description': 'Search/filter product assignment only.'},
+                                                    {'name': 'permission_group_code',
+                                                     'example': 'clientsuperadmin',
+                                                     'description': 'Search/filter permission group role code.'},
+                                                    {'name': 'permission_group_name',
+                                                     'example': 'Client Super Admin',
+                                                     'description': 'Search/filter permission group role name.'},
+                                                    {'name': 'registration_date',
+                                                     'example': '2021-02-24',
+                                                     'description': 'Search/filter registration date. JSON filters are '
+                                                                    'better for date ranges.'},
+                                                    {'name': 'last_login_date',
+                                                     'example': '2026-07-03',
+                                                     'description': 'Search/filter latest login date. JSON filters are '
+                                                                    'better for date ranges.'}]},
+                             {'id': 'users-detail',
+                              'title': 'User Detail',
+                              'method': 'GET',
+                              'path': '/users/{id}',
+                              'purpose': 'Fetch one user by user ID with profile details, master role, account status, '
+                                         'latest login date, and assigned product permissions.',
+                              'auth_type': 'bearer',
+                              'request_type': 'Path Parameter',
+                              'parameters': [{'name': 'id',
+                                              'type': 'integer',
+                                              'required': 'Yes',
+                                              'example': '6717',
+                                              'description': 'User ID.'},
+                                             {'name': 'include_archived',
+                                              'type': 'boolean',
+                                              'required': 'No',
+                                              'example': 'false',
+                                              'description': 'When false, archived users are excluded. Use true only '
+                                                             'when archived users should also be considered.'}],
+                              'examples': [{'title': 'User detail',
+                                            'description': 'Fetch one user by global user ID.',
+                                            'path': '/users/6717',
+                                            'query': {}},
+                                           {'title': 'User detail including archived',
+                                            'description': 'Fetch one user and allow archived records.',
+                                            'path': '/users/6717',
+                                            'query': {'include_archived': 'true'}}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'User detail fetched successfully',
+                                                   'meta': {'generated_at': '2026-07-04T10:00:00+00:00',
+                                                            'id': 6717,
+                                                            'include_archived': False},
+                                                   'data': {'schema_version': 'logiklu_user.v1',
+                                                            'user': {'id': 6717,
+                                                                     'parent_id': None,
+                                                                     'master_role': {'name': 'Client Super Admin',
+                                                                                     'code': 'clientsuperadmin'},
+                                                                     'name': 'Alex Hans',
+                                                                     'first_name': 'Alex',
+                                                                     'middle_name': None,
+                                                                     'last_name': 'Hans',
+                                                                     'email': 'logikluenterprise@gmail.com',
+                                                                     'phone': '',
+                                                                     'address': {'address': 'test',
+                                                                                 'city': 'test',
+                                                                                 'state': 'Kentucky',
+                                                                                 'zip': '56789',
+                                                                                 'country': None},
+                                                                     'status': 'Active',
+                                                                     'registration_date': '2021-02-24 06:33:57',
+                                                                     'last_login_date': '2026-07-03 16:50:05',
+                                                                     'product_permissions': [{'product': {'name': 'Sales '
+                                                                                                                  'CRM',
+                                                                                                          'permission_group': {'id': 5,
+                                                                                                                               'role_code': 'clientsuperadmin',
+                                                                                                                               'role_name': 'Client '
+                                                                                                                                            'Super '
+                                                                                                                                            'Admin'}}},
+                                                                                             {'product': {'name': 'Lead '
+                                                                                                                  'Actuator',
+                                                                                                          'permission_group': {'id': 5,
+                                                                                                                               'role_code': 'clientsuperadmin',
+                                                                                                                               'role_name': 'Client '
+                                                                                                                                            'Super '
+                                                                                                                                            'Admin'}}}]}}}}]}],
  'errors': [{'code': 'AUTH_CREDENTIALS_MISSING',
              'http_status': 401,
              'meaning': 'No bearer token was sent.',
@@ -2746,15 +3236,27 @@ API_USAGE_DATA = {'title': 'LogiKlu Focus API Guide',
              'fix': 'Retry later or contact LogiKlu support with request details.'},
             {'code': 'ROLES_FETCH_FAILED',
              'http_status': 500,
-             'meaning': 'The roles list could not be fetched because of a server-side error.',
+             'meaning': 'The roles list could not be fetched from the master database because of a server-side error.',
              'fix': 'Retry later or contact LogiKlu support with request details.'},
             {'code': 'ROLE_NOT_FOUND',
              'http_status': 404,
-             'meaning': 'No static role exists for the requested role_code.',
-             'fix': 'Use one of the valid role codes returned by /roles.'},
+             'meaning': 'No active role with parent_id > 0 exists for the requested role_code.',
+             'fix': 'Call /roles to get the active role codes currently configured in the master database.'},
             {'code': 'ROLE_DETAIL_FETCH_FAILED',
              'http_status': 500,
-             'meaning': 'The role detail endpoint failed because of a server-side error.',
+             'meaning': 'The role detail endpoint failed while reading the master database.',
+             'fix': 'Retry later or contact LogiKlu support with request details.'},
+            {'code': 'USERS_FETCH_FAILED',
+             'http_status': 500,
+             'meaning': 'The users list could not be fetched because of a server-side error.',
+             'fix': 'Retry later or contact LogiKlu support with request details.'},
+            {'code': 'USER_NOT_FOUND',
+             'http_status': 404,
+             'meaning': 'No user was found for the requested global user ID.',
+             'fix': 'Use a valid user id returned by /users.'},
+            {'code': 'USER_DETAIL_FETCH_FAILED',
+             'http_status': 500,
+             'meaning': 'The user detail endpoint failed because of a server-side error.',
              'fix': 'Retry later or contact LogiKlu support with request details.'}],
  'logging': {'title': 'API Request Logging',
              'description': 'LogiKlu stores API request logs internally for audit, troubleshooting, and support.',
