@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import base64
 import calendar
+import hashlib
+import hmac
+import json
+import time
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -9,6 +14,14 @@ import os
 from app.db.client import get_client_connection
 
 MASTER_DB_NAME = os.getenv("MASTER_DB_NAME", "logiklu0_leadactuator")
+
+
+
+def _table_name(table_name: str) -> str:
+    """Force usage-login master tables to be read from logiklu0_leadactuator."""
+    db_name = (MASTER_DB_NAME or "logiklu0_leadactuator").replace("`", "")
+    safe_table = str(table_name or "").replace("`", "")
+    return f"`{db_name}`.`{safe_table}`"
 
 ENVIRONMENTS = {
     "sandbox": {
@@ -45,6 +58,225 @@ PUBLIC_REPORT_PATH_PREFIXES = (
 
 class ApiUsageError(Exception):
     pass
+
+
+USAGE_SESSION_TTL_SECONDS = int(os.getenv("USAGE_SESSION_TTL_SECONDS", "28800"))
+
+
+def _usage_session_secret() -> str:
+    return (
+        os.getenv("USAGE_SESSION_SECRET")
+        or os.getenv("JWT_SECRET_KEY")
+        or os.getenv("SECRET_KEY")
+        or "logiklu-apiusage-session-secret-change-me"
+    )
+
+
+def get_usage_session_cookie_name(oauth_client_id: str) -> str:
+    digest = hashlib.sha256(str(oauth_client_id or "").encode("utf-8")).hexdigest()[:16]
+    return "lk_apiusage_session_" + digest
+
+
+def _b64_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("utf-8")
+
+
+def _b64_decode(data: str) -> bytes:
+    padding = "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode((data + padding).encode("utf-8"))
+
+
+def _sign_usage_payload(payload_encoded: str) -> str:
+    return hmac.new(
+        _usage_session_secret().encode("utf-8"),
+        payload_encoded.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def create_usage_session_token(oauth_client_id: str, domain_id: Any, user: Dict[str, Any]) -> str:
+    now_ts = int(time.time())
+    payload = {
+        "oauth_client_id": str(oauth_client_id or ""),
+        "domain_id": _safe_int(domain_id),
+        "user_id": _safe_int(user.get("id")),
+        "email": str(user.get("email") or ""),
+        "username": str(user.get("username") or ""),
+        "name": " ".join([
+            str(user.get("first_name") or "").strip(),
+            str(user.get("last_name") or "").strip(),
+        ]).strip(),
+        "iat": now_ts,
+        "exp": now_ts + max(USAGE_SESSION_TTL_SECONDS, 300),
+        "token_type": "apiusage_session",
+    }
+    payload_encoded = _b64_encode(json.dumps(payload, separators=(",", ":"), default=str).encode("utf-8"))
+    signature = _sign_usage_payload(payload_encoded)
+    return payload_encoded + "." + signature
+
+
+def _decode_usage_session_token(token: str) -> Optional[Dict[str, Any]]:
+    token = str(token or "").strip()
+    if not token or "." not in token:
+        return None
+
+    try:
+        payload_encoded, signature = token.rsplit(".", 1)
+        expected = _sign_usage_payload(payload_encoded)
+        if not hmac.compare_digest(expected, signature):
+            return None
+        payload = json.loads(_b64_decode(payload_encoded).decode("utf-8"))
+        if payload.get("token_type") != "apiusage_session":
+            return None
+        if _safe_int(payload.get("exp")) < int(time.time()):
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+def _verify_user_domain_access(cursor, domain_id: Any, user_id: Any) -> bool:
+    table = _table_name("zp_subscription_domain_user")
+    row = _fetch_one(cursor, f"""
+        SELECT id
+        FROM {table}
+        WHERE domain_id = %s
+          AND user_id = %s
+          AND status = 'ACTIVE'
+          AND is_admin IN ('ADMINISTRATOR', 'MODERATOR')
+        LIMIT 1
+    """, (_safe_int(domain_id), _safe_int(user_id)))
+    return bool(row)
+
+def get_usage_report_client(oauth_client_id: str) -> Optional[Dict[str, Any]]:
+    conn = None
+    cursor = None
+    try:
+        conn = _get_conn()
+        cursor = _cursor(conn)
+        return _resolve_client(cursor, oauth_client_id)
+    finally:
+        try:
+            if cursor:
+                cursor.close()
+        except Exception:
+            pass
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+
+def authenticate_usage_report_user(oauth_client_id: str, login_id: str, password: str) -> Dict[str, Any]:
+    login_id = str(login_id or "").strip()
+    password = str(password or "")
+
+    if not login_id or not password:
+        return {
+            "valid": False,
+            "message": "Please enter your email/username and password.",
+        }
+
+    conn = None
+    cursor = None
+    try:
+        conn = _get_conn()
+        cursor = _cursor(conn)
+        client = _resolve_client(cursor, oauth_client_id)
+        if not client:
+            return {
+                "valid": False,
+                "message": "Invalid or inactive client access key.",
+            }
+
+        user_table = _table_name("zp_users")
+        user = _fetch_one(cursor, f"""
+            SELECT
+                id,
+                first_name,
+                last_name,
+                email,
+                username,
+                status
+            FROM {user_table}
+            WHERE status = 1
+              AND (
+                    LOWER(TRIM(COALESCE(email, ''))) = LOWER(TRIM(%s))
+                 OR LOWER(TRIM(COALESCE(username, ''))) = LOWER(TRIM(%s))
+              )
+              AND password = MD5(%s)
+            LIMIT 1
+        """, (login_id, login_id, password))
+
+        if not user:
+            return {
+                "valid": False,
+                "message": "Invalid email/username or password.",
+            }
+
+        if not _verify_user_domain_access(cursor, client.get("domain_id"), user.get("id")):
+            return {
+                "valid": False,
+                "message": "You do not have permission to view this API usage report.",
+            }
+
+        return {
+            "valid": True,
+            "client": client,
+            "user": user,
+            "token": create_usage_session_token(oauth_client_id, client.get("domain_id"), user),
+        }
+
+    finally:
+        try:
+            if cursor:
+                cursor.close()
+        except Exception:
+            pass
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+
+def verify_usage_report_session(oauth_client_id: str, token: str) -> Dict[str, Any]:
+    payload = _decode_usage_session_token(token)
+    if not payload:
+        return {"valid": False, "message": "Login required."}
+
+    if str(payload.get("oauth_client_id") or "") != str(oauth_client_id or ""):
+        return {"valid": False, "message": "Login required."}
+
+    conn = None
+    cursor = None
+    try:
+        conn = _get_conn()
+        cursor = _cursor(conn)
+        client = _resolve_client(cursor, oauth_client_id)
+        if not client:
+            return {"valid": False, "message": "Invalid or inactive client access key."}
+
+        if _safe_int(client.get("domain_id")) != _safe_int(payload.get("domain_id")):
+            return {"valid": False, "message": "Login required."}
+
+        if not _verify_user_domain_access(cursor, client.get("domain_id"), payload.get("user_id")):
+            return {"valid": False, "message": "You do not have permission to view this API usage report."}
+
+        return {"valid": True, "client": client, "user": payload}
+
+    finally:
+        try:
+            if cursor:
+                cursor.close()
+        except Exception:
+            pass
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
 
 
 def _get_conn():
@@ -269,7 +501,8 @@ def _determine_selected_environment(requested_env: Optional[str]) -> str:
 
 
 def _resolve_client(cursor, oauth_client_id: str) -> Optional[Dict[str, Any]]:
-    sql = """
+    table = _table_name("lk_agent_api_clients")
+    sql = f"""
         SELECT
             api_client_id,
             domain_id,
@@ -283,7 +516,7 @@ def _resolve_client(cursor, oauth_client_id: str) -> Optional[Dict[str, Any]]:
             rate_limit,
             rate_limit_per_minute,
             status
-        FROM lk_agent_api_clients
+        FROM {table}
         WHERE status = 'ACTIVE'
           AND oauth_client_id = %s
         LIMIT 1
