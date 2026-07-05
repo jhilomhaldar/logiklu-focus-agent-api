@@ -136,9 +136,7 @@ def get_log_table_name() -> str:
 
     environment = get_api_environment()
 
-    if environment == "sandbox":
-        return "lk_agent_api_request_logs_sandbox"
-
+    
     if environment == "staging":
         return "lk_agent_api_request_logs_staging"
     
