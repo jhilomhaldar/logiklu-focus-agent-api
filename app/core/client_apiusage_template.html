@@ -213,10 +213,19 @@ table{width:100%;border-collapse:collapse;}
 .bar-stack{width:100%;max-width:36px;border-radius:7px 7px 3px 3px;background:var(--surface-3);overflow:hidden;display:flex;flex-direction:column-reverse;}
 .bar-fill{width:100%;background:linear-gradient(180deg,var(--accent),#2FA391);}
 .bar-fill.err{background:var(--error);}
-.bar-fill.prev{background:var(--surface-4);}
+.bar-fill.prev{background:linear-gradient(180deg,var(--purple),#6D5BD0);opacity:.95;}
+.daily-double-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;height:100%;justify-content:flex-end;min-width:0;}
+.daily-pair{display:flex;align-items:flex-end;justify-content:center;gap:4px;width:100%;height:100%;min-height:18px;}
+.daily-bar-wrap{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:7px;max-width:15px;flex:1;}
+.daily-bar{width:100%;border-radius:7px 7px 3px 3px;min-height:3px;}
+.daily-bar.success{background:linear-gradient(180deg,var(--accent),#2FA391);}
+.daily-bar.failed{background:var(--error);}
+.daily-zero-line{height:3px;width:100%;border-radius:999px;background:var(--surface-4);opacity:.45;}
 .bar-label,.bar-val{font-size:10px;font-family:var(--font-mono);color:var(--text-faint);white-space:nowrap;}
 .bar-val{color:var(--text-dim);}
-.week-compare-col{display:grid;grid-template-columns:1fr 1fr;align-items:end;gap:5px;flex:1;height:100%;min-width:0;}
+.week-compare-col{display:grid;grid-template-columns:1fr 1fr;align-items:end;gap:2px;flex:1;height:100%;min-width:0;}
+.weekly-bars{gap:4px;}
+.weekly-bars .bar-stack{max-width:30px;}
 .week-compare-col .bar-col{height:100%;}
 .week-label{grid-column:1/3;text-align:center;font-size:10.5px;color:var(--text-faint);font-family:var(--font-mono);}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;}
@@ -225,6 +234,13 @@ table{width:100%;border-collapse:collapse;}
 .cal-cell.empty{border:none;background:transparent;}
 .cal-cell .d{font-size:10px;color:var(--text-faint);}
 .cal-cell .v{font-size:11px;color:var(--text);font-weight:900;}
+.cal-cell.clickable{cursor:pointer;transition:border .16s ease,transform .16s ease,background .16s ease;}
+.cal-cell.clickable:hover{border-color:var(--accent-line);transform:translateY(-1px);}
+.cal-stats{display:grid;gap:3px;margin-top:6px;font-size:10.5px;line-height:1.25;}
+.cal-total{color:var(--text);font-weight:900;}
+.cal-success{color:var(--success);font-weight:900;}
+.cal-errors{color:var(--error);font-weight:900;}
+.cal-muted{color:var(--text-faint);font-size:10px;}
 
 /* Tables / lists */
 .table-card{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius);overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.12);margin-bottom:14px;}
@@ -273,6 +289,20 @@ code{font-family:var(--font-mono);color:var(--text);}
 .filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
 .search-input{flex:1;min-width:260px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:10px 12px;font-size:12.5px;}
 .search-input::placeholder{color:var(--text-faint);}
+
+.call-filter-date{display:none;min-width:150px;}
+.call-filter-date.active{display:inline-block;}
+.multi-filter{position:relative;min-width:150px;}
+.multi-filter-btn{width:100%;border:1px solid var(--border);background:var(--surface-2);color:var(--text-dim);border-radius:9px;padding:10px 12px;font-size:12.5px;text-align:left;display:flex;justify-content:space-between;gap:8px;align-items:center;}
+.multi-filter-btn:after{content:"▾";font-size:10px;color:var(--text-faint);}
+.multi-filter.open .multi-filter-btn{border-color:var(--accent-line);color:var(--text);}
+.multi-filter-menu{display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:8px;box-shadow:var(--shadow);z-index:30;}
+.multi-filter.open .multi-filter-menu{display:block;}
+.multi-filter-menu label{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;color:var(--text-dim);font-size:12px;white-space:nowrap;}
+.multi-filter-menu label:hover{background:var(--surface-3);color:var(--text);}
+.multi-filter-menu input{accent-color:var(--accent);}
+.calls-filter-range{min-width:155px;}
+.page-btn[disabled]{opacity:.45;cursor:not-allowed;}
 .status-list{display:flex;flex-direction:column;gap:12px;}
 .status-row{display:flex;align-items:center;gap:10px;}
 .status-code{width:48px;font-family:var(--font-mono);font-size:12px;font-weight:900;}
@@ -357,9 +387,9 @@ code{font-family:var(--font-mono);color:var(--text);}
     </div>
     <div class="top-actions">
       <select class="select" id="envSelect">
-        <option value="sandbox">Sandbox</option>
-        <option value="staging">Stage / Staging</option>
-        <option value="production">Production</option>
+        <option value="sandbox">Sandbox API</option>
+        <option value="staging">Staging API</option>
+        <option value="production">Live API</option>
       </select>
       <select class="select" id="rangeSelect">
         <option value="last_30_days">Last 30 days</option>
@@ -382,7 +412,7 @@ code{font-family:var(--font-mono);color:var(--text);}
   </header>
 
   <section class="pulse-strip">
-    <div class="pulse-live"><span class="dot-live"></span><span id="liveLabel">SANDBOX LIVE</span></div>
+    <div class="pulse-live"><span class="dot-live"></span><span id="liveLabel">SANDBOX</span></div>
     <svg class="pulse-svg" viewBox="0 0 720 34" preserveAspectRatio="none" aria-hidden="true">
       <polyline points="0,20 20,20 30,8 40,26 55,20 70,20 90,4 100,30 115,20 140,20 155,12 165,22 180,20 205,20 220,6 232,28 248,20 270,20 285,16 300,20 320,20 335,2 348,32 365,20 390,20 405,10 418,24 432,20 455,20 470,7 483,27 498,20 520,20 535,14 550,20 570,20 588,4 600,30 615,20 640,20 655,9 668,25 682,20 705,20 720,20" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" opacity=".88"/>
     </svg>
@@ -478,7 +508,7 @@ code{font-family:var(--font-mono);color:var(--text);}
 
     <!-- Weekly -->
     <div class="view" id="view-weekly">
-      <div class="section-head"><div><h2>Weekly Usage Report</h2><p>Compare weekly volume, growth, error ratio, endpoint consumption, and last-week baseline.</p></div><div class="filters"><select class="select"><option>This Week</option><option>Last Week</option><option>Last 4 Weeks</option></select><select class="select"><option>Selected Environment</option><option>All Environments</option></select></div></div>
+      <div class="section-head"><div><h2>Weekly Usage Report</h2><p>Compare weekly volume, growth, error ratio, endpoint consumption, and last-week baseline.</p></div><div class="filters"><select class="select" id="weeklyRangeSelect"><option value="this_week">This Week</option><option value="last_week">Last Week</option><option value="last_4_weeks">Last 4 Weeks</option></select></div></div>
       <div class="kpi-grid">
         <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Weekly Calls</span><span class="kpi-icon accent">☎</span></div><div class="kpi-value mono" id="weeklyCalls">27,152</div><div class="kpi-delta up" id="weeklyGrowth">▲ 8.2%</div></div>
         <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Avg Daily Calls</span><span class="kpi-icon info">📊</span></div><div class="kpi-value mono" id="weeklyAvg">3,879</div><div class="kpi-delta flat">Across 7 days</div></div>
@@ -487,8 +517,8 @@ code{font-family:var(--font-mono);color:var(--text);}
       </div>
       <div class="table-card"><div class="table-responsive"><table><thead><tr><th>Week</th><th>Period</th><th>Total Calls</th><th>Success Rate</th><th>Errors</th><th>Avg Response</th><th>Growth</th></tr></thead><tbody id="weeklyTable"></tbody></table></div></div>
       <div class="panel">
-        <div class="panel-head"><div><div class="panel-title">This Week vs Last Week Graph</div><div class="panel-sub">Side-by-side daily comparison.</div></div><div class="legend"><span class="legend-item"><i class="legend-dot" style="background:var(--surface-4)"></i>Last week</span><span class="legend-item"><i class="legend-dot" style="background:var(--accent)"></i>This week</span></div></div>
-        <div class="bars" id="weeklyBars"></div>
+        <div class="panel-head"><div><div class="panel-title" id="weeklyGraphTitle">This Week vs Last Week Graph</div><div class="panel-sub">Side-by-side daily comparison.</div></div><div class="legend"><span class="legend-item"><i class="legend-dot" style="background:var(--purple)"></i><span id="weeklyPrevLegend">Last week</span></span><span class="legend-item"><i class="legend-dot" style="background:var(--accent)"></i><span id="weeklyThisLegend">This week</span></span></div></div>
+        <div class="bars weekly-bars" id="weeklyBars"></div>
       </div>
       <div class="kpi-grid">
         <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Weekly Total</span></div><div class="kpi-value mono" id="weeklyTotal2">27,152</div><div class="kpi-delta up" id="weeklyTotalNote">▲ 8.2% vs last week</div></div>
@@ -500,12 +530,12 @@ code{font-family:var(--font-mono);color:var(--text);}
 
     <!-- Monthly -->
     <div class="view" id="view-monthly">
-      <div class="section-head"><div><h2>Monthly Usage Report</h2><p>Month-wise usage summary with quota tracking, endpoint share, calendar heatmap, and billing-level insight.</p></div><div class="filters"><select class="select"><option>July 2026</option><option>June 2026</option><option>May 2026</option></select><button class="btn primary">Export CSV</button></div></div>
+      <div class="section-head"><div><h2>Monthly Usage Report</h2><p>Month-wise usage summary with quota tracking, endpoint share, calendar heatmap, and billing-level insight.</p></div><div class="filters"><select class="select" id="monthlyReportMonthSelect"></select><button class="btn primary hidden" type="button">Export CSV</button></div></div>
       <div class="grid-2">
-        <div class="panel"><div class="panel-head"><div><div class="panel-title">Monthly Consumption</div><div class="panel-sub">Current month API usage against limit.</div></div><strong class="mono" id="monthlyConsumptionPct">72%</strong></div><div class="usage-meter"><div class="meter-head"><span>July Usage</span><span id="monthlyConsumptionText">36,245 / 50,000</span></div><div class="meter-track"><div class="meter-fill" id="monthlyConsumptionBar" style="width:72%"></div></div></div><div class="mini-stat"><span>Projected month-end usage</span><span id="monthlyProjected">48,900 calls</span></div><div class="mini-stat"><span>Remaining calls</span><span id="monthlyRemaining">13,755 calls</span></div><div class="mini-stat"><span>Estimated exhaustion date</span><span id="monthlyExhaustion">29 Jul 2026</span></div></div>
+        <div class="panel"><div class="panel-head"><div><div class="panel-title">Monthly Consumption</div><div class="panel-sub">Current month API usage against limit.</div></div><strong class="mono" id="monthlyConsumptionPct">72%</strong></div><div class="usage-meter"><div class="meter-head"><span id="monthlyUsageLabel">Selected Month Usage</span><span id="monthlyConsumptionText">36,245 / 50,000</span></div><div class="meter-track"><div class="meter-fill" id="monthlyConsumptionBar" style="width:72%"></div></div></div><div class="mini-stat"><span>Projected month-end usage</span><span id="monthlyProjected">48,900 calls</span></div><div class="mini-stat"><span>Remaining calls</span><span id="monthlyRemaining">13,755 calls</span></div><div class="mini-stat"><span>Estimated exhaustion date</span><span id="monthlyExhaustion">29 Jul 2026</span></div></div>
         <div class="panel"><div class="panel-head"><div><div class="panel-title">Endpoint Share</div><div class="panel-sub">Call distribution by endpoint.</div></div></div><div class="endpoint-list" id="monthlyEndpointShare"></div></div>
       </div>
-      <div class="panel"><div class="panel-head"><div><div class="panel-title">Monthly Calendar Heatmap</div><div class="panel-sub">Darker cells mark higher daily API volume.</div></div><select class="select"><option>July 2026</option><option>June 2026</option></select></div><div class="cal-grid" id="calGrid"></div></div>
+      <div class="panel"><div class="panel-head"><div><div class="panel-title">Monthly Calendar Heatmap</div><div class="panel-sub">Each day shows successful and error calls. Click a day to view call details.</div></div><select class="select" id="monthlyCalendarMonthSelect"></select></div><div class="cal-grid" id="calGrid"></div></div>
       <div class="kpi-grid">
         <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Calls This Month</span></div><div class="kpi-value mono" id="monthCalls">36,245</div><div class="kpi-delta up" id="monthVsLast">▲ 22% vs June pace</div></div>
         <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Monthly Quota</span></div><div class="kpi-value mono" id="monthQuota">50K</div><div class="kpi-delta flat">Plan limit</div></div>
@@ -519,9 +549,41 @@ code{font-family:var(--font-mono);color:var(--text);}
     <div class="view" id="view-calls">
       <div class="section-head"><div><h2>Detailed API Calls</h2><p>Request-level log for auditing, debugging, IP checks, status code analysis, and performance review.</p></div></div>
       <div class="panel">
-        <div class="filter-bar"><input class="search-input" type="text" placeholder="Search by endpoint, request ID, IP, API key, or error code…"><select class="select"><option>All methods</option><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select><select class="select"><option>All statuses</option><option>2xx Success</option><option>4xx Client error</option><option>5xx Server error</option></select><select class="select"><option>Last 24 hours</option><option>Last 7 days</option><option>Last 30 days</option></select></div>
+        <div class="filter-bar">
+          <input class="search-input" id="callSearchInput" type="text" placeholder="Search by endpoint, request ID, IP, API key, or error code…">
+          <div class="multi-filter" id="callMethodFilter">
+            <button class="multi-filter-btn" type="button" id="callMethodButton">All methods</button>
+            <div class="multi-filter-menu">
+              <label><input type="checkbox" value="all" checked> All methods</label>
+              <label><input type="checkbox" value="GET"> GET</label>
+              <label><input type="checkbox" value="POST"> POST</label>
+              <label><input type="checkbox" value="PUT"> PUT</label>
+              <label><input type="checkbox" value="PATCH"> PATCH</label>
+              <label><input type="checkbox" value="DELETE"> DELETE</label>
+            </div>
+          </div>
+          <div class="multi-filter" id="callStatusFilter">
+            <button class="multi-filter-btn" type="button" id="callStatusButton">All statuses</button>
+            <div class="multi-filter-menu">
+              <label><input type="checkbox" value="all" checked> All statuses</label>
+              <label><input type="checkbox" value="2xx"> 2xx Success</label>
+              <label><input type="checkbox" value="3xx"> 3xx Redirect</label>
+              <label><input type="checkbox" value="4xx"> 4xx Client error</label>
+              <label><input type="checkbox" value="5xx"> 5xx Server error</label>
+            </div>
+          </div>
+          <select class="select calls-filter-range" id="callsRangeSelect">
+            <option value="last_24_hours">Last 24 Hours</option>
+            <option value="last_7_days">Last 7 Days</option>
+            <option value="last_15_days">Last 15 Days</option>
+            <option value="last_30_days">Last 30 Days</option>
+            <option value="custom_range">Custom Range</option>
+          </select>
+          <input class="field call-filter-date" id="callsDateFromInput" type="date" />
+          <input class="field call-filter-date" id="callsDateToInput" type="date" />
+        </div>
         <div class="table-responsive"><table><thead><tr><th>Timestamp</th><th>Request ID</th><th>Method</th><th>Endpoint</th><th>Status</th><th>Response</th><th>IP Address</th><th>API Key</th><th>Error Code</th></tr></thead><tbody id="callsBody"></tbody></table></div>
-        <div class="table-foot"><div id="callsFoot">Showing 1–10 of 36,245 calls</div><div class="page-controls"><button class="page-btn active">1</button><button class="page-btn">2</button><button class="page-btn">3</button><button class="page-btn">…</button><button class="page-btn">124</button></div></div>
+        <div class="table-foot"><div id="callsFoot">Showing 0–0 of 0 calls</div><div class="page-controls" id="callsPagination"></div></div>
       </div>
     </div>
   </section>
@@ -571,6 +633,10 @@ code{font-family:var(--font-mono);color:var(--text);}
   var activeTimezoneOffset = isNaN(serverTimezoneOffset) ? browserTimezoneOffset : serverTimezoneOffset;
 
   var currentEnv = '__SELECTED_ENV__';
+  var currentMonthlyCalendar = [];
+  var currentMonthlyOptions = [];
+  var currentCallsPage = 1;
+  var callsSearchTimer = null;
   var titles = {
     dashboard:['Dashboard','Monitor usage, quota, errors, trends, and request-level logs across all environments.'],
     daily:['Daily report','Hour-by-hour breakdown and daily report table for the selected environment.'],
@@ -583,6 +649,15 @@ code{font-family:var(--font-mono);color:var(--text);}
   function num(x){return Number(String(x).replace(/[^0-9.]/g,''));}
   function fmt(n){return Number(n).toLocaleString('en-IN');}
   function todayInputDate(){var d=new Date(); var y=d.getFullYear(); var m=String(d.getMonth()+1).padStart(2,'0'); var day=String(d.getDate()).padStart(2,'0'); return y+'-'+m+'-'+day;}
+  function enforceDailyDateMax(input){
+    if(!input)return;
+    var today=todayInputDate();
+    input.setAttribute('max', today);
+    if(input.value && input.value > today){
+      input.value = today;
+      alert('Future dates are not allowed for API usage reports. Showing today instead.');
+    }
+  }
   function pct(used,quota){quota=Number(quota||0); if(!quota || quota<=0){return 0;} return Math.round((used/quota)*100);}
   function methodClass(method){return method.toLowerCase();}
   function codeClass(code){code=String(code); if(code.indexOf('2')===0)return 'code-2xx'; if(code.indexOf('4')===0)return 'code-4xx'; return 'code-5xx';}
@@ -616,28 +691,39 @@ code{font-family:var(--font-mono);color:var(--text);}
     var failedValues=(data.dailyFail && data.dailyFail.length)?data.dailyFail:[];
     var labels=(data.dailyHourLabels && data.dailyHourLabels.length)?data.dailyHourLabels:successValues.map(function(_,i){return hourLabel12(i);});
 
-    var totals=[];
+    var max=0;
     for(var i=0;i<24;i++){
       var success=Number(successValues[i] || 0);
       var failed=Number(failedValues[i] || 0);
-      totals.push(success + failed);
+      max=Math.max(max, success, failed);
     }
 
-    var max=Math.max.apply(null,totals.concat([0]));
+    for(var h=0;h<24;h++){
+      var successCount=Number(successValues[h] || 0);
+      var failedCount=Number(failedValues[h] || 0);
+      var label=labels[h] || hourLabel12(h);
+      var successHeight=max ? Math.max(successCount ? 12 : 0, Math.round((successCount/max)*100)) : 0;
+      var failedHeight=max ? Math.max(failedCount ? 12 : 0, Math.round((failedCount/max)*100)) : 0;
+      var total=successCount + failedCount;
 
-    totals.forEach(function(total,i){
-      var success=Number(successValues[i] || 0);
-      var failed=Number(failedValues[i] || 0);
-      var h=max ? Math.max(18,Math.round((total/max)*100)) : 8;
-      var failedPct=total ? Math.min(100,Math.round((failed/total)*100)) : 0;
-      var successPct=total ? Math.max(0,100-failedPct) : 100;
-      var displayValue=total>=1000?(total/1000).toFixed(1)+'K':total;
+      var successBar = successCount
+        ? '<div class="daily-bar success" style="height:'+successHeight+'%" title="'+label+' Success: '+successCount+'"></div>'
+        : '<div class="daily-zero-line" title="'+label+' Success: 0"></div>';
+      var failedBar = failedCount
+        ? '<div class="daily-bar failed" style="height:'+failedHeight+'%" title="'+label+' Failed: '+failedCount+'"></div>'
+        : '<div class="daily-zero-line" title="'+label+' Failed: 0"></div>';
+
       var col=document.createElement('div');
-      col.className='bar-col';
-      col.title=(labels[i] || hourLabel12(i))+' · Success: '+success+' · Failed: '+failed;
-      col.innerHTML='<span class="bar-val">'+displayValue+'</span><div class="bar-stack" style="height:'+h+'%"><div class="bar-fill err" style="height:'+failedPct+'%"></div><div class="bar-fill" style="height:'+successPct+'%"></div></div><span class="bar-label">'+(labels[i] || hourLabel12(i))+'</span>';
+      col.className='daily-double-col';
+      col.title=label+' · Success: '+successCount+' · Failed: '+failedCount;
+      col.innerHTML='<span class="bar-val">'+total+'</span>'+
+        '<div class="daily-pair">'+
+          '<div class="daily-bar-wrap">'+successBar+'</div>'+
+          '<div class="daily-bar-wrap">'+failedBar+'</div>'+
+        '</div>'+
+        '<span class="bar-label">'+label+'</span>';
       el.appendChild(col);
-    });
+    }
   }
 
   function drawWeeklyBars(data){
@@ -650,10 +736,82 @@ code{font-family:var(--font-mono);color:var(--text);}
 
   function shortNum(v){return v>=1000000?(v/1000000).toFixed(1)+'M':v>=1000?(v/1000).toFixed(v>=10000?0:1)+'K':v;}
 
+  function populateMonthSelects(data){
+    var monthly=data.monthly || {};
+    var options=monthly.monthOptions || [];
+    currentMonthlyOptions=options;
+    ['#monthlyReportMonthSelect','#monthlyCalendarMonthSelect'].forEach(function(selector){
+      var sel=qs(selector); if(!sel)return;
+      var current=monthly.selectedMonth || sel.value;
+      sel.innerHTML='';
+      options.forEach(function(opt){
+        var option=document.createElement('option');
+        option.value=opt.value;
+        option.textContent=opt.label;
+        sel.appendChild(option);
+      });
+      if(current){sel.value=current;}
+    });
+  }
+
   function drawCalendar(data){
-    var el=qs('#calGrid'); el.innerHTML=''; ['S','M','T','W','T','F','S'].forEach(function(d){var div=document.createElement('div'); div.className='cal-dow'; div.textContent=d; el.appendChild(div);});
-    for(var i=0;i<3;i++){var empty=document.createElement('div'); empty.className='cal-cell empty'; el.appendChild(empty);}
-    var max=data.used/18; for(var d=1;d<=31;d++){var val=Math.round((data.used/31)*(0.66+(((d*7)%13)/18))); var intensity=Math.min(val/max,1); var cell=document.createElement('div'); cell.className='cal-cell'; cell.style.background='rgba(94,234,212,'+(0.045+intensity*0.31).toFixed(3)+')'; cell.style.borderColor=d===4?'var(--accent-line)':'var(--border-soft)'; cell.innerHTML='<span class="d">'+d+'</span><span class="v">'+shortNum(val)+'</span>'; el.appendChild(cell);}
+    var el=qs('#calGrid');
+    if(!el)return;
+    el.innerHTML='';
+    var monthly=data.monthly || {};
+    var days=monthly.calendar || [];
+    currentMonthlyCalendar=days;
+    ['S','M','T','W','T','F','S'].forEach(function(d){var div=document.createElement('div'); div.className='cal-dow'; div.textContent=d; el.appendChild(div);});
+    if(!days.length){
+      var empty=document.createElement('div');
+      empty.className='cal-cell empty';
+      empty.style.gridColumn='1 / span 7';
+      empty.innerHTML='<span class="cal-muted">No calendar data available.</span>';
+      el.appendChild(empty);
+      return;
+    }
+    var selectedMonth=monthly.selectedMonth || '';
+    var parts=selectedMonth.split('-');
+    var firstDay=0;
+    if(parts.length===2){firstDay=new Date(Number(parts[0]), Number(parts[1])-1, 1).getDay();}
+    for(var i=0;i<firstDay;i++){var blank=document.createElement('div'); blank.className='cal-cell empty'; el.appendChild(blank);}
+    var maxTotal=0;
+    days.forEach(function(day){maxTotal=Math.max(maxTotal, Number(day.total || 0));});
+    days.forEach(function(day,idx){
+      var total=Number(day.total || 0), success=Number(day.success || 0), errors=Number(day.errors || 0);
+      var intensity=maxTotal ? Math.min(total/maxTotal,1) : 0;
+      var cell=document.createElement('div');
+      cell.className='cal-cell clickable';
+      cell.style.background='rgba(94,234,212,'+(0.035+intensity*0.28).toFixed(3)+')';
+      cell.style.borderColor=total ? 'rgba(94,234,212,.28)' : 'var(--border-soft)';
+      cell.innerHTML='<span class="d">'+day.day+'</span>'+
+        '<div class="cal-stats">'+
+          '<span class="cal-total">Total: '+fmt(total)+'</span>'+
+          '<span class="cal-success">Success: '+fmt(success)+'</span>'+
+          '<span class="cal-errors">Errors: '+fmt(errors)+'</span>'+
+        '</div>';
+      cell.addEventListener('click',function(){openDayCallModal(idx);});
+      el.appendChild(cell);
+    });
+  }
+
+  function openDayCallModal(index){
+    var day=currentMonthlyCalendar[index];
+    if(!day)return;
+    qs('#errorModalTitle').textContent='API Calls on '+(day.date || ('Day '+day.day));
+    qs('#errorModalSub').textContent='Total: '+fmt(day.total || 0)+' · Success: '+fmt(day.success || 0)+' · Errors: '+fmt(day.errors || 0);
+    var rows=day.calls || [];
+    if(!rows.length){
+      qs('#errorModalBody').innerHTML='<div class="modal-empty">No API calls found for this day.</div>';
+    }else{
+      var html='<div class="table-responsive"><table><thead><tr><th>Time</th><th>Method</th><th>Endpoint</th><th>Status</th><th>Response</th><th>Error Code</th></tr></thead><tbody>';
+      rows.forEach(function(r){
+        html+='<tr><td class="mono">'+r[0]+'</td><td><span class="method '+methodClass(r[2])+'">'+r[2]+'</span></td><td><code>'+r[3]+'</code></td><td><span class="code-pill '+codeClass(r[4])+'">'+r[4]+'</span></td><td class="mono">'+r[5]+'</td><td>'+(r[8]==='-'?'-':'<span class="down">'+r[8]+'</span>')+'</td></tr>';
+      });
+      html+='</tbody></table></div>';
+      qs('#errorModalBody').innerHTML=html;
+    }
+    qs('#errorModal').classList.add('active');
   }
 
   function fillEndpoints(id,data){
@@ -720,8 +878,60 @@ code{font-family:var(--font-mono);color:var(--text);}
   }
 
   function fillCalls(data){
-    var el=qs('#callsBody'); el.innerHTML=''; data.calls.forEach(function(r){var method=r[2], code=r[4]; var tr=document.createElement('tr'); tr.innerHTML='<td class="mono">'+r[0]+'</td><td class="mono">'+r[1]+'</td><td><span class="method '+methodClass(method)+'">'+method+'</span></td><td><code>'+r[3]+'</code></td><td><span class="code-pill '+codeClass(code)+'">'+code+'</span></td><td class="mono">'+r[5]+'</td><td>'+r[6]+'</td><td><code>'+r[7]+'</code></td><td>'+(r[8]==='-'?'-':'<span class="down">'+r[8]+'</span>')+'</td>'; el.appendChild(tr);});
-    qs('#callsFoot').textContent='Showing 1–'+data.calls.length+' of '+data.totalCalls+' calls';
+    var el=qs('#callsBody');
+    if(!el)return;
+    el.innerHTML='';
+    var rows=data.calls || [];
+    if(!rows.length){
+      el.innerHTML='<tr><td colspan="9" class="flat">No API calls found for the selected filters.</td></tr>';
+    }else{
+      rows.forEach(function(r){
+        var method=r[2], code=r[4];
+        var tr=document.createElement('tr');
+        tr.innerHTML='<td class="mono">'+r[0]+'</td><td class="mono">'+r[1]+'</td><td><span class="method '+methodClass(method)+'">'+method+'</span></td><td><code>'+r[3]+'</code></td><td><span class="code-pill '+codeClass(code)+'">'+code+'</span></td><td class="mono">'+r[5]+'</td><td>'+r[6]+'</td><td><code>'+r[7]+'</code></td><td>'+(r[8]==='-'?'-':'<span class="down">'+r[8]+'</span>')+'</td>';
+        el.appendChild(tr);
+      });
+    }
+    renderCallsPagination(data.callsPagination || {page:1,per_page:20,total:rows.length,total_pages:1,from:rows.length?1:0,to:rows.length});
+  }
+
+  function renderCallsPagination(p){
+    var foot=qs('#callsFoot');
+    var controls=qs('#callsPagination');
+    if(!controls)return;
+    var total=Number(p.total || 0), page=Number(p.page || 1), totalPages=Number(p.total_pages || 1);
+    currentCallsPage=page;
+    if(foot){foot.textContent='Showing '+(p.from || 0)+'–'+(p.to || 0)+' of '+total+' calls';}
+    controls.innerHTML='';
+    if(totalPages<=1){return;}
+
+    function addBtn(label,target,active,disabled){
+      var b=document.createElement('button');
+      b.className='page-btn'+(active?' active':'');
+      b.textContent=label;
+      b.disabled=!!disabled;
+      if(!disabled && !active){
+        b.addEventListener('click',function(){
+          currentCallsPage=target;
+          fetchUsageData(collectFilterParams());
+        });
+      }
+      controls.appendChild(b);
+    }
+
+    addBtn('Prev',Math.max(1,page-1),false,page<=1);
+    var pages=[];
+    pages.push(1);
+    for(var i=page-1;i<=page+1;i++){if(i>1 && i<totalPages){pages.push(i);}}
+    if(totalPages>1){pages.push(totalPages);}
+    pages=pages.filter(function(v,i,a){return a.indexOf(v)===i;}).sort(function(a,b){return a-b;});
+    var last=0;
+    pages.forEach(function(pg){
+      if(last && pg-last>1){addBtn('…',pg,false,true);}
+      addBtn(String(pg),pg,pg===page,false);
+      last=pg;
+    });
+    addBtn('Next',Math.min(totalPages,page+1),false,page>=totalPages);
   }
 
   function updateEnv(env){
@@ -735,17 +945,21 @@ code{font-family:var(--font-mono);color:var(--text);}
     qs('#quotaRatio').textContent=hasQuota?(fmt(d.used)+' / '+fmt(d.quota)):(fmt(d.used)+' / Not Set'); qs('#quotaPct').textContent=hasQuota?(q+'%'):'Not Set'; qs('#quotaBar').style.width=Math.min(q,100)+'%'; qs('#projectedUsage').textContent=d.projected; qs('#quotaSuggestion').textContent=d.suggestion;
     qs('#baseUrl').textContent=d.url; qs('#envNameInline').textContent=d.label; qs('#rateLimitInline').textContent=d.rateLimit; qs('#lastSuccessInline').textContent=d.lastSuccess;
     qs('#topEnvName').textContent=d.label; qs('#topBaseUrl').textContent=d.url; if(qs('#topTimezone'))qs('#topTimezone').textContent=(d.timezone || activeTimezone || 'Asia/Calcutta');
-    if(qs('#dailyDateTopInput') && d.dailyDate){qs('#dailyDateTopInput').value=d.dailyDate;}
+    if(qs('#dailyDateTopInput') && d.dailyDate){qs('#dailyDateTopInput').value=d.dailyDate; enforceDailyDateMax(qs('#dailyDateTopInput'));}
     if(qs('#dailyGraphTitle'))qs('#dailyGraphTitle').textContent=d.dailyGraphTitle || ((d.dailyDateLabel || 'Today') + ', Hour by Hour Graph');
     if(qs('#dailyCardTitle'))qs('#dailyCardTitle').textContent=d.dailyCardTitle || d.dailyDateLabel || 'Today';
     if(qs('#dailyReportSub'))qs('#dailyReportSub').textContent=(d.dailyDateLabel || 'Today') + ' API calls, errors, success rate, and average response time.';
-    populateEndpointSelects(d); renderErrorBuckets(d);
-    drawTrend(d); drawDailyBars(d); drawWeeklyBars(d); drawCalendar(d); fillEndpoints('#dashboardEndpoints',d); fillEndpoints('#monthlyEndpointShare',d); fillTable('#dailyTable',d.dailyRows); fillTable('#weeklyTable',d.weeklyRows,'weekly'); fillTable('#monthlyTable',d.monthPast); fillCalls(d);
+    if(qs('#weeklyRangeSelect') && d.weeklyRange){qs('#weeklyRangeSelect').value=d.weeklyRange;}
+    if(qs('#weeklyGraphTitle'))qs('#weeklyGraphTitle').textContent=d.weeklyGraphTitle || 'This Week vs Last Week Graph';
+    if(qs('#weeklyPrevLegend'))qs('#weeklyPrevLegend').textContent=d.weeklyPreviousLabel || 'Last week';
+    if(qs('#weeklyThisLegend'))qs('#weeklyThisLegend').textContent=d.weeklyCurrentLabel || 'This week';
+    populateEndpointSelects(d); populateMonthSelects(d); renderErrorBuckets(d);
+    drawTrend(d); drawDailyBars(d); drawWeeklyBars(d); drawCalendar(d); fillEndpoints('#dashboardEndpoints',d); fillEndpoints('#monthlyEndpointShare',{endpoints:((d.monthly && d.monthly.endpointShare) || d.endpoints || [])}); fillTable('#dailyTable',d.dailyRows); fillTable('#weeklyTable',d.weeklyRows,'weekly'); fillTable('#monthlyTable',d.monthPast); fillCalls(d);
     var today=d.dailyRows[0] || ['-', '0', '0', '0', '0', '0ms', 'Not Set']; var dayTotal=num(today[1]); var daySuccess=num(today[2]); var daySuccessRate=dayTotal?((daySuccess/dayTotal)*100).toFixed(1)+'%':'0.0%'; qs('#dailyTotal').textContent=today[1]; qs('#dailySuccess').textContent=today[2]; qs('#dailyErrors').textContent=fmt(num(today[3])+num(today[4])); qs('#dailySuccessRate').textContent=daySuccessRate; qs('#daily4xx').textContent=today[3]; qs('#daily5xx').textContent=today[4]; qs('#dailyQuotaShare').textContent=today[6]; qs('#dailyRateHits').textContent=d.rateLimitHits || '0'; qs('#dailySlowCalls').textContent=d.slowCalls || '0'; qs('#peakCalls').textContent=d.peakCallsValue || fmt(Math.max.apply(null,d.daily)); qs('#peakResponse').textContent=d.peakResponseValue || d.avgResponse; qs('#peakTime').textContent=d.peakTime || 'Not available';
-    var weeklyTotalNum=num(d.weeklyRows[0][2]); var weeklyErrorsNum=num(d.weeklyRows[0][4]); var firstEndpoint=(d.endpoints && d.endpoints.length)?d.endpoints[0]:['-','-','0','0.0%'];
-    qs('#weeklyCalls').textContent=d.weeklyRows[0][2]; qs('#weeklyAvg').textContent=fmt(Math.round(weeklyTotalNum/7)); qs('#weeklyErrorRate').textContent=weeklyTotalNum?((weeklyErrorsNum/weeklyTotalNum)*100).toFixed(1)+'%':'0.0%'; qs('#weeklyTopEndpoint').textContent=firstEndpoint[0].replace('GET ',''); qs('#weeklyTopShare').textContent=firstEndpoint[3]+' usage'; qs('#weeklyTotal2').textContent=d.weeklyRows[0][2]; qs('#weeklyTotalNote').textContent='▲ '+d.weeklyRows[0][6].replace('+','')+' vs last week'; qs('#weeklyErrorCalls').textContent=d.weeklyRows[0][4];
+    var weeklySummary=d.weeklySummary || {}; var weeklyTotalNum=num(weeklySummary.total || (d.weeklyRows[0] ? d.weeklyRows[0][2] : '0')); var weeklyErrorsNum=num(weeklySummary.errorCalls || (d.weeklyRows[0] ? d.weeklyRows[0][4] : '0')); var firstEndpoint=(d.endpoints && d.endpoints.length)?d.endpoints[0]:['-','-','0','0.0%'];
+    qs('#weeklyCalls').textContent=weeklySummary.total || (d.weeklyRows[0] ? d.weeklyRows[0][2] : '0'); qs('#weeklyAvg').textContent=weeklySummary.avgDaily || fmt(Math.round(weeklyTotalNum/7)); qs('#weeklyErrorRate').textContent=weeklySummary.errorRate || (weeklyTotalNum?((weeklyErrorsNum/weeklyTotalNum)*100).toFixed(1)+'%':'0.0%'); qs('#weeklyTopEndpoint').textContent=firstEndpoint[0].replace('GET ',''); qs('#weeklyTopShare').textContent=firstEndpoint[3]+' usage'; qs('#weeklyTotal2').textContent=weeklySummary.total || (d.weeklyRows[0] ? d.weeklyRows[0][2] : '0'); qs('#weeklyTotalNote').textContent=(weeklySummary.growth || '0.0%')+' vs previous week'; qs('#weeklyErrorCalls').textContent=weeklySummary.errorCalls || (d.weeklyRows[0] ? d.weeklyRows[0][4] : '0');
     var days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']; var maxIdx=0,minIdx=0; d.weeklyThis.forEach(function(v,i){if(v>d.weeklyThis[maxIdx])maxIdx=i;if(v<d.weeklyThis[minIdx])minIdx=i;}); qs('#busiestDay').textContent=days[maxIdx]; qs('#busiestDayCalls').textContent=fmt(d.weeklyThis[maxIdx])+' calls'; qs('#quietestDay').textContent=days[minIdx]; qs('#quietestDayCalls').textContent=fmt(d.weeklyThis[minIdx])+' calls';
-    qs('#monthlyConsumptionPct').textContent=hasQuota?(q+'%'):'Not Set'; qs('#monthlyConsumptionText').textContent=hasQuota?(fmt(d.used)+' / '+fmt(d.quota)):(fmt(d.used)+' / Not Set'); qs('#monthlyConsumptionBar').style.width=Math.min(q,100)+'%'; qs('#monthlyProjected').textContent=d.projected; qs('#monthlyRemaining').textContent=hasQuota?(fmt(remaining)+' calls'):'Not applicable'; qs('#monthlyExhaustion').textContent=!hasQuota?'Not applicable':(q>80?'25 Jul 2026':q>65?'29 Jul 2026':'Not expected this month'); qs('#monthCalls').textContent=d.totalCalls; qs('#monthQuota').textContent=hasQuota?shortNum(d.quota):'Not Set'; qs('#monthKeys').textContent=d.keys; qs('#monthProjectedEnd').textContent=hasQuota?shortNum(num(d.projected)):'Not available'; qs('#monthProjectedNote').textContent=!hasQuota?'Quota not configured':(q>80?'Above alert level':'Within safe range');
+    var monthly=d.monthly || {}; var monthlySummary=monthly.summary || {}; if(qs('#monthlyUsageLabel'))qs('#monthlyUsageLabel').textContent=(monthly.monthLabel || 'Selected Month')+' Usage'; var monthlyTotal=num(monthlySummary.total || '0'); var monthlyQ=hasQuota?Math.round((monthlyTotal/d.quota)*100):0; qs('#monthlyConsumptionPct').textContent=hasQuota?(monthlyQ+'%'):'Not Set'; qs('#monthlyConsumptionText').textContent=hasQuota?((monthlySummary.total || '0')+' / '+fmt(d.quota)):((monthlySummary.total || '0')+' / Not Set'); qs('#monthlyConsumptionBar').style.width=Math.min(monthlyQ,100)+'%'; qs('#monthlyProjected').textContent=hasQuota?(monthlySummary.total+' calls'):'Not available'; qs('#monthlyRemaining').textContent=hasQuota?(fmt(Math.max(d.quota-monthlyTotal,0))+' calls'):'Not applicable'; qs('#monthlyExhaustion').textContent='Not applicable'; qs('#monthCalls').textContent=monthlySummary.total || '0'; qs('#monthVsLast').textContent=(monthly.monthLabel || 'Selected month')+' usage'; qs('#monthQuota').textContent=hasQuota?shortNum(d.quota):'Not Set'; qs('#monthKeys').textContent=d.keys; qs('#monthProjectedEnd').textContent=hasQuota?(monthlySummary.total || '0'):'Not available'; qs('#monthProjectedNote').textContent=!hasQuota?'Quota not configured':'Selected month total';
   }
 
   qsa('.nav-item').forEach(function(btn){btn.addEventListener('click',function(){var view=btn.dataset.view;qsa('.nav-item').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');qsa('.view').forEach(function(v){v.classList.remove('active');});qs('#view-'+view).classList.add('active');qs('#pageTitle').textContent=titles[view][0];qs('#pageSub').textContent=titles[view][1];setTopFilterVisibility(view);});});
@@ -760,14 +974,12 @@ code{font-family:var(--font-mono);color:var(--text);}
     return url;
   }
 
-  function buildPageUrl(params){
-    var url=new URL(window.location.href);
-    ['environment','range','date_from','date_to','daily_date','timezone','timezone_offset'].forEach(function(key){url.searchParams.delete(key);});
-    Object.keys(params || {}).forEach(function(key){
-      var value=params[key];
-      if(value!==undefined && value!==null && value!==''){url.searchParams.set(key,value);}
-    });
-    return url;
+  function cleanBrowserUrl(){
+    try{
+      if(window.location.search || window.location.hash){
+        window.history.replaceState({},'',window.location.pathname);
+      }
+    }catch(e){}
   }
 
   function setLoading(isLoading){
@@ -791,9 +1003,9 @@ code{font-family:var(--font-mono);color:var(--text);}
     var to=qs('#dateToInput');
     var apply=qs('#applyRangeBtn');
     var dailyDate=qs('#dailyDateTopInput');
-    var showRange=(view==='dashboard' || view==='calls');
+    var showRange=(view==='dashboard');
     if(rangeSel)rangeSel.classList.toggle('hidden',!showRange);
-    if(dailyDate)dailyDate.classList.toggle('hidden',view!=='daily');
+    if(dailyDate){dailyDate.classList.toggle('hidden',view!=='daily'); if(view==='daily')enforceDailyDateMax(dailyDate);}
     if(!showRange){
       if(from)from.classList.remove('active');
       if(to)to.classList.remove('active');
@@ -812,6 +1024,8 @@ code{font-family:var(--font-mono);color:var(--text);}
     var from=qs('#dateFromInput');
     var to=qs('#dateToInput');
     var dailyDate=qs('#dailyDateTopInput');
+    var weeklySel=qs('#weeklyRangeSelect'), monthlyReportSel=qs('#monthlyReportMonthSelect'), monthlyCalendarSel=qs('#monthlyCalendarMonthSelect');
+    var monthlySel=qs('#monthlyReportMonthSelect') || qs('#monthlyCalendarMonthSelect');
     var view=activeViewName();
     var params={
       environment: envSel ? envSel.value : currentEnv,
@@ -821,6 +1035,28 @@ code{font-family:var(--font-mono);color:var(--text);}
     if(view==='daily'){
       params.range='this_month';
       if(dailyDate && dailyDate.value){params.daily_date=dailyDate.value;}
+    }else if(view==='weekly'){
+      params.range='this_month';
+      if(weeklySel && weeklySel.value){params.weekly_range=weeklySel.value;}
+    }else if(view==='monthly'){
+      params.range='this_month';
+      if(monthlySel && monthlySel.value){params.monthly_month=monthlySel.value;}
+    }else if(view==='calls'){
+      params.range='last_30_days';
+      params.page=currentCallsPage || 1;
+      params.per_page=20;
+      var callSearch=qs('#callSearchInput');
+      var callRange=qs('#callsRangeSelect');
+      var callFrom=qs('#callsDateFromInput');
+      var callTo=qs('#callsDateToInput');
+      params.call_search=callSearch ? callSearch.value.trim() : '';
+      params.call_methods=getMultiFilterValues('callMethodFilter').join(',');
+      params.call_statuses=getMultiFilterValues('callStatusFilter').join(',');
+      params.calls_range=callRange ? callRange.value : 'last_24_hours';
+      if(params.calls_range==='custom_range'){
+        if(callFrom && callFrom.value){params.calls_date_from=callFrom.value;}
+        if(callTo && callTo.value){params.calls_date_to=callTo.value;}
+      }
     }else{
       params.range=rangeSel ? rangeSel.value : 'last_30_days';
       if(params.range==='custom_range'){
@@ -858,13 +1094,81 @@ code{font-family:var(--font-mono);color:var(--text);}
     })
     .then(function(payload){
       applyUsageData(payload, preferredEnv);
-      window.history.replaceState({},'',buildPageUrl(params).toString());
     })
     .catch(function(err){
       console.error(err);
       alert('Unable to refresh API usage data. Please try again.');
     })
     .finally(function(){setLoading(false);});
+  }
+
+  function getMultiFilterValues(containerId){
+    var box=qs('#'+containerId);
+    if(!box)return [];
+    var checked=qsa('#'+containerId+' input[type="checkbox"]:checked').map(function(i){return i.value;});
+    if(checked.indexOf('all')>=0){return [];}
+    return checked;
+  }
+
+  function setMultiFilterValues(containerId, values){
+    var valueSet={};
+    (values || []).forEach(function(v){valueSet[String(v).toLowerCase()]=true;});
+    var any=false;
+    qsa('#'+containerId+' input[type="checkbox"]').forEach(function(input){
+      if(input.value==='all'){return;}
+      input.checked=!!valueSet[String(input.value).toLowerCase()];
+      if(input.checked){any=true;}
+    });
+    var all=qs('#'+containerId+' input[value="all"]');
+    if(all)all.checked=!any;
+    updateMultiFilterLabel(containerId);
+  }
+
+  function updateMultiFilterLabel(containerId){
+    var buttonId=containerId==='callMethodFilter'?'callMethodButton':'callStatusButton';
+    var button=qs('#'+buttonId);
+    if(!button)return;
+    var values=getMultiFilterValues(containerId);
+    if(!values.length){
+      button.textContent=containerId==='callMethodFilter'?'All methods':'All statuses';
+    }else if(values.length<=2){
+      button.textContent=values.join(', ').toUpperCase();
+    }else{
+      button.textContent=values.length+' selected';
+    }
+  }
+
+  function initMultiFilter(containerId){
+    var box=qs('#'+containerId);
+    if(!box)return;
+    var btn=box.querySelector('.multi-filter-btn');
+    if(btn){btn.addEventListener('click',function(e){e.stopPropagation();qsa('.multi-filter').forEach(function(other){if(other!==box)other.classList.remove('open');});box.classList.toggle('open');});}
+    qsa('#'+containerId+' input[type="checkbox"]').forEach(function(input){
+      input.addEventListener('change',function(){
+        var all=qs('#'+containerId+' input[value="all"]');
+        if(input.value==='all' && input.checked){
+          qsa('#'+containerId+' input[type="checkbox"]').forEach(function(i){if(i.value!=='all')i.checked=false;});
+        }else if(input.value!=='all' && input.checked){
+          if(all)all.checked=false;
+        }
+        var selected=getMultiFilterValues(containerId);
+        if(!selected.length && all){all.checked=true;}
+        updateMultiFilterLabel(containerId);
+        currentCallsPage=1;
+        if(activeViewName()==='calls'){fetchUsageData(collectFilterParams());}
+      });
+    });
+  }
+
+  document.addEventListener('click',function(){qsa('.multi-filter').forEach(function(box){box.classList.remove('open');});});
+
+  function toggleCallsDateFilters(){
+    var range=qs('#callsRangeSelect');
+    var from=qs('#callsDateFromInput');
+    var to=qs('#callsDateToInput');
+    var custom=range && range.value==='custom_range';
+    if(from)from.classList.toggle('active',!!custom);
+    if(to)to.classList.toggle('active',!!custom);
   }
 
   function initFilters(){
@@ -874,15 +1178,35 @@ code{font-family:var(--font-mono);color:var(--text);}
     var df=params.get('date_from') || '';
     var dt=params.get('date_to') || '';
     var dailyParam=params.get('daily_date') || '';
+    var weeklyParam=params.get('weekly_range') || 'this_week';
+    var monthlyParam=params.get('monthly_month') || '';
+    var callSearchParam=params.get('call_search') || '';
+    var callMethodsParam=params.get('call_methods') || '';
+    var callStatusesParam=params.get('call_statuses') || '';
+    var callsRangeParam=params.get('calls_range') || 'last_24_hours';
+    var callsDateFromParam=params.get('calls_date_from') || '';
+    var callsDateToParam=params.get('calls_date_to') || '';
+    currentCallsPage=Number(params.get('page') || 1);
     var envSel=qs('#envSelect');
     var rangeSel=qs('#rangeSelect');
-    var from=qs('#dateFromInput'), to=qs('#dateToInput'), apply=qs('#applyRangeBtn'), dailyDate=qs('#dailyDateTopInput');
+    var from=qs('#dateFromInput'), to=qs('#dateToInput'), apply=qs('#applyRangeBtn'), dailyDate=qs('#dailyDateTopInput'), weeklySel=qs('#weeklyRangeSelect'), monthlyReportSel=qs('#monthlyReportMonthSelect'), monthlyCalendarSel=qs('#monthlyCalendarMonthSelect');
+    var callSearch=qs('#callSearchInput'), callRange=qs('#callsRangeSelect'), callFrom=qs('#callsDateFromInput'), callTo=qs('#callsDateToInput');
 
     if(envSel){envSel.value=env;}
     if(rangeSel){rangeSel.value=range;}
     if(from)from.value=df;
     if(to)to.value=dt;
-    if(dailyDate)dailyDate.value=dailyParam || todayInputDate();
+    if(dailyDate){dailyDate.value=dailyParam || todayInputDate(); enforceDailyDateMax(dailyDate);}
+    if(weeklySel){weeklySel.value=weeklyParam;}
+    if(monthlyReportSel && monthlyParam){monthlyReportSel.value=monthlyParam;}
+    if(monthlyCalendarSel && monthlyParam){monthlyCalendarSel.value=monthlyParam;}
+    if(callSearch){callSearch.value=callSearchParam;}
+    if(callRange){callRange.value=callsRangeParam;}
+    if(callFrom){callFrom.value=callsDateFromParam;}
+    if(callTo){callTo.value=callsDateToParam;}
+    setMultiFilterValues('callMethodFilter', callMethodsParam ? callMethodsParam.split(',') : []);
+    setMultiFilterValues('callStatusFilter', callStatusesParam ? callStatusesParam.split(',') : []);
+    toggleCallsDateFilters();
 
     function toggleDate(){
       var custom=rangeSel && rangeSel.value==='custom_range';
@@ -895,8 +1219,8 @@ code{font-family:var(--font-mono);color:var(--text);}
 
     if(envSel){
       envSel.addEventListener('change',function(){
-        updateEnv(envSel.value);
-        window.history.replaceState({},'',buildPageUrl(collectFilterParams()).toString());
+        currentCallsPage = 1;
+        fetchUsageData(collectFilterParams());
       });
     }
 
@@ -920,9 +1244,55 @@ code{font-family:var(--font-mono);color:var(--text);}
 
     if(dailyDate){
       dailyDate.addEventListener('change',function(){
+        enforceDailyDateMax(dailyDate);
         fetchUsageData(collectFilterParams());
       });
     }
+
+    if(weeklySel){
+      weeklySel.addEventListener('change',function(){
+        fetchUsageData(collectFilterParams());
+      });
+    }
+
+    function handleMonthlyChange(source){
+      var other = source === monthlyReportSel ? monthlyCalendarSel : monthlyReportSel;
+      if(other && source && source.value){other.value=source.value;}
+      fetchUsageData(collectFilterParams());
+    }
+    if(monthlyReportSel){monthlyReportSel.addEventListener('change',function(){handleMonthlyChange(monthlyReportSel);});}
+    if(monthlyCalendarSel){monthlyCalendarSel.addEventListener('change',function(){handleMonthlyChange(monthlyCalendarSel);});}
+
+    initMultiFilter('callMethodFilter');
+    initMultiFilter('callStatusFilter');
+    if(callSearch){
+      callSearch.addEventListener('input',function(){
+        if(callsSearchTimer){clearTimeout(callsSearchTimer);}
+        callsSearchTimer=setTimeout(function(){
+          currentCallsPage=1;
+          if(activeViewName()==='calls'){fetchUsageData(collectFilterParams());}
+        },350);
+      });
+    }
+    if(callRange){
+      callRange.addEventListener('change',function(){
+        toggleCallsDateFilters();
+        currentCallsPage=1;
+        if(callRange.value!=='custom_range'){
+          if(callFrom)callFrom.value='';
+          if(callTo)callTo.value='';
+          if(activeViewName()==='calls'){fetchUsageData(collectFilterParams());}
+        }
+      });
+    }
+    [callFrom,callTo].forEach(function(input){
+      if(input){input.addEventListener('change',function(){
+        currentCallsPage=1;
+        if(callRange && callRange.value==='custom_range' && callFrom && callFrom.value && callTo && callTo.value && activeViewName()==='calls'){
+          fetchUsageData(collectFilterParams());
+        }
+      });}
+    });
 
     var refresh=qs('#refreshUsageBtn');
     if(refresh){refresh.addEventListener('click',function(){fetchUsageData(collectFilterParams());});}
@@ -930,6 +1300,7 @@ code{font-family:var(--font-mono);color:var(--text);}
     var close=qs('#errorModalClose'); if(close)close.addEventListener('click',closeErrorModal);
     var modal=qs('#errorModal'); if(modal)modal.addEventListener('click',function(e){if(e.target===modal)closeErrorModal();});
     updateEnv(env);
+    cleanBrowserUrl();
 
     // Initial server render uses Asia/Calcutta when browser timezone is unknown.
     // After the page loads, refresh once with the actual device timezone.

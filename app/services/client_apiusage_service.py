@@ -12,21 +12,21 @@ MASTER_DB_NAME = os.getenv("MASTER_DB_NAME", "logiklu0_leadactuator")
 
 ENVIRONMENTS = {
     "sandbox": {
-        "label": "Sandbox",
+        "label": "Sandbox API",
         "url": "https://sandboxapi.logiklu.com",
-        "status": "SANDBOX LIVE",
+        "status": "SANDBOX API",
         "table": "lk_agent_api_request_logs_sandbox",
     },
     "staging": {
-        "label": "Stage / Staging",
+        "label": "Staging API",
         "url": "https://stagingapi.logiklu.com",
-        "status": "STAGING TEST",
+        "status": "STAGING",
         "table": "lk_agent_api_request_logs_staging",
     },
     "production": {
-        "label": "Production",
+        "label": "Live API",
         "url": "https://api.logiklu.com",
-        "status": "PRODUCTION LIVE",
+        "status": "LIVE API",
         "table": "lk_agent_api_request_logs",
     },
 }
@@ -199,6 +199,55 @@ def _month_range(tz_offset_minutes: int = DEFAULT_TIMEZONE_OFFSET_MINUTES, ref: 
 
 def _week_start(d: date) -> date:
     return d - timedelta(days=d.weekday())
+
+
+def _normalize_weekly_range(value: Optional[str]) -> str:
+    value = str(value or "this_week").strip().lower()
+    if value in ["last_week", "last_4_weeks"]:
+        return value
+    return "this_week"
+
+
+def _weekly_range_label(weekly_range: str) -> str:
+    weekly_range = _normalize_weekly_range(weekly_range)
+    if weekly_range == "last_week":
+        return "Last Week"
+    if weekly_range == "last_4_weeks":
+        return "Last 4 Weeks"
+    return "This Week"
+
+
+def _weekly_selected_bounds(weekly_range: str, tz_offset_minutes: int) -> Tuple[date, date]:
+    today = _local_now(tz_offset_minutes).date()
+    this_start = _week_start(today)
+    weekly_range = _normalize_weekly_range(weekly_range)
+
+    if weekly_range == "last_week":
+        start = this_start - timedelta(days=7)
+        end = this_start
+    elif weekly_range == "last_4_weeks":
+        start = this_start - timedelta(days=21)
+        end = this_start + timedelta(days=7)
+    else:
+        start = this_start
+        end = this_start + timedelta(days=7)
+
+    return start, end
+
+
+def _weekly_compare_bounds(weekly_range: str, tz_offset_minutes: int) -> Tuple[date, date, date, date]:
+    weekly_range = _normalize_weekly_range(weekly_range)
+    selected_start, selected_end = _weekly_selected_bounds(weekly_range, tz_offset_minutes)
+
+    if weekly_range == "last_4_weeks":
+        # Keep the daily comparison graph readable by comparing the current week with the previous week.
+        today = _local_now(tz_offset_minutes).date()
+        selected_start = _week_start(today)
+        selected_end = selected_start + timedelta(days=7)
+
+    previous_start = selected_start - timedelta(days=7)
+    previous_end = selected_start
+    return selected_start, selected_end, previous_start, previous_end
 
 
 def _previous_month(d: date, months_back: int) -> date:
@@ -756,12 +805,10 @@ def _daily_rows(cursor, table: str, client: Dict[str, Any], quota: float, tz_off
     return output
 
 
-def _weekly_arrays(cursor, table: str, client: Dict[str, Any], tz_offset_minutes: int) -> Tuple[List[int], List[int]]:
-    today = _local_now(tz_offset_minutes).date()
-    this_start = _week_start(today)
-    prev_start = this_start - timedelta(days=7)
-    start_dt = _local_to_utc(datetime.combine(prev_start, datetime.min.time()), tz_offset_minutes)
-    end_dt = _local_to_utc(datetime.combine(this_start + timedelta(days=7), datetime.min.time()), tz_offset_minutes)
+def _weekly_arrays(cursor, table: str, client: Dict[str, Any], tz_offset_minutes: int, weekly_range: str = "this_week") -> Tuple[List[int], List[int]]:
+    selected_start, selected_end, previous_start, previous_end = _weekly_compare_bounds(weekly_range, tz_offset_minutes)
+    start_dt = _local_to_utc(datetime.combine(previous_start, datetime.min.time()), tz_offset_minutes)
+    end_dt = _local_to_utc(datetime.combine(selected_end, datetime.min.time()), tz_offset_minutes)
     where_sql, params = _base_where(client, start_dt, end_dt)
     local_expr = _local_created_expr(tz_offset_minutes)
     sql = f"""
@@ -772,21 +819,22 @@ def _weekly_arrays(cursor, table: str, client: Dict[str, Any], tz_offset_minutes
     """
     rows = _fetch_all(cursor, sql, params)
     by_day = {str(r.get("day")): _safe_int(r.get("total")) for r in rows}
-    this_week = []
-    prev_week = []
+    selected_week = []
+    previous_week = []
     for i in range(7):
-        prev_week.append(by_day.get(str(prev_start + timedelta(days=i)), 0))
-        this_week.append(by_day.get(str(this_start + timedelta(days=i)), 0))
-    return this_week, prev_week
+        previous_week.append(by_day.get(str(previous_start + timedelta(days=i)), 0))
+        selected_week.append(by_day.get(str(selected_start + timedelta(days=i)), 0))
+    return selected_week, previous_week
 
 
-def _weekly_rows(cursor, table: str, client: Dict[str, Any], tz_offset_minutes: int) -> List[List[str]]:
-    today = _local_now(tz_offset_minutes).date()
-    this_start = _week_start(today)
-    start_dt = _local_to_utc(datetime.combine(this_start - timedelta(days=14), datetime.min.time()), tz_offset_minutes)
-    end_dt = _local_to_utc(datetime.combine(this_start + timedelta(days=7), datetime.min.time()), tz_offset_minutes)
+def _weekly_rows(cursor, table: str, client: Dict[str, Any], tz_offset_minutes: int, weekly_range: str = "this_week") -> List[List[str]]:
+    weekly_range = _normalize_weekly_range(weekly_range)
+    selected_start, selected_end = _weekly_selected_bounds(weekly_range, tz_offset_minutes)
+    start_dt = _local_to_utc(datetime.combine(selected_start, datetime.min.time()), tz_offset_minutes)
+    end_dt = _local_to_utc(datetime.combine(selected_end, datetime.min.time()), tz_offset_minutes)
     where_sql, params = _base_where(client, start_dt, end_dt)
     local_expr = _local_created_expr(tz_offset_minutes)
+
     sql = f"""
         SELECT
             YEARWEEK({local_expr}, 1) AS week_key,
@@ -800,19 +848,21 @@ def _weekly_rows(cursor, table: str, client: Dict[str, Any], tz_offset_minutes: 
         WHERE {where_sql}
         GROUP BY YEARWEEK({local_expr}, 1)
         ORDER BY week_key DESC
-        LIMIT 3
     """
     rows = _fetch_all(cursor, sql, params)
+
     output: List[List[str]] = []
-    previous_total: Optional[int] = None
+    previous_total_for_growth = _weekly_total_for_period(cursor, table, client, selected_start - timedelta(days=7), selected_start, tz_offset_minutes)
+
     for row in rows:
         total = _safe_int(row.get("total"))
         success = _safe_int(row.get("success_calls"))
         success_rate = (success / total * 100.0) if total else 0.0
         growth = "0.0%"
-        if previous_total is not None and previous_total:
-            diff = ((total - previous_total) / previous_total) * 100.0
+        if previous_total_for_growth:
+            diff = ((total - previous_total_for_growth) / previous_total_for_growth) * 100.0
             growth = ("+" if diff >= 0 else "") + f"{diff:.1f}%"
+
         min_day = row.get("min_day")
         max_day = row.get("max_day")
         if isinstance(min_day, date) and isinstance(max_day, date):
@@ -820,7 +870,11 @@ def _weekly_rows(cursor, table: str, client: Dict[str, Any], tz_offset_minutes: 
             week_label = f"Week {min_day.isocalendar()[1]}"
         else:
             period = "-"
-            week_label = str(row.get("week_key") or "Week")
+            week_label = str(row.get("week_key") or _weekly_range_label(weekly_range))
+
+        if weekly_range in ["this_week", "last_week"] and output:
+            continue
+
         output.append([
             week_label,
             period,
@@ -830,58 +884,238 @@ def _weekly_rows(cursor, table: str, client: Dict[str, Any], tz_offset_minutes: 
             _fmt_ms(row.get("avg_response_ms")),
             growth,
         ])
-        previous_total = total
+
     if not output:
-        today = _local_now(tz_offset_minutes).date()
-        ws = _week_start(today)
-        output.append([f"Week {ws.isocalendar()[1]}", f"{ws.strftime('%d %b')} - {(ws + timedelta(days=6)).strftime('%d %b')}", "0", "0.0%", "0", "0ms", "0.0%"])
+        label = _weekly_range_label(weekly_range)
+        output.append([
+            label,
+            f"{selected_start.strftime('%d %b')} - {(selected_end - timedelta(days=1)).strftime('%d %b')}",
+            "0",
+            "0.0%",
+            "0",
+            "0ms",
+            "0.0%",
+        ])
+
     return output
 
 
-def _month_rows(cursor, table: str, client: Dict[str, Any], quota: float, tz_offset_minutes: int) -> List[List[str]]:
-    today = _local_now(tz_offset_minutes).date()
-    start_ref = _previous_month(today, 2)
-    start_dt = _local_to_utc(datetime.combine(start_ref, datetime.min.time()), tz_offset_minutes)
-    end_dt = _local_to_utc(datetime.combine(today + timedelta(days=1), datetime.min.time()), tz_offset_minutes)
+def _weekly_total_for_period(cursor, table: str, client: Dict[str, Any], start_day: date, end_day: date, tz_offset_minutes: int) -> int:
+    start_dt = _local_to_utc(datetime.combine(start_day, datetime.min.time()), tz_offset_minutes)
+    end_dt = _local_to_utc(datetime.combine(end_day, datetime.min.time()), tz_offset_minutes)
     where_sql, params = _base_where(client, start_dt, end_dt)
-    local_expr = _local_created_expr(tz_offset_minutes)
+    sql = f"""
+        SELECT COUNT(*) AS total
+        FROM `{table}`
+        WHERE {where_sql}
+    """
+    row = _fetch_one(cursor, sql, params) or {}
+    return _safe_int(row.get("total"))
+
+
+def _weekly_summary(cursor, table: str, client: Dict[str, Any], tz_offset_minutes: int, weekly_range: str = "this_week") -> Dict[str, Any]:
+    weekly_range = _normalize_weekly_range(weekly_range)
+    selected_start, selected_end = _weekly_selected_bounds(weekly_range, tz_offset_minutes)
+    previous_total = _weekly_total_for_period(cursor, table, client, selected_start - timedelta(days=7), selected_start, tz_offset_minutes)
+
+    start_dt = _local_to_utc(datetime.combine(selected_start, datetime.min.time()), tz_offset_minutes)
+    end_dt = _local_to_utc(datetime.combine(selected_end, datetime.min.time()), tz_offset_minutes)
+    where_sql, params = _base_where(client, start_dt, end_dt)
     sql = f"""
         SELECT
-            DATE_FORMAT({local_expr}, '%%Y-%%m') AS month_key,
             COUNT(*) AS total,
             SUM(CASE WHEN http_status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) AS success_calls,
             SUM(CASE WHEN http_status_code >= 400 THEN 1 ELSE 0 END) AS error_calls,
             AVG(execution_time_ms) AS avg_response_ms
         FROM `{table}`
         WHERE {where_sql}
-        GROUP BY DATE_FORMAT({local_expr}, '%%Y-%%m')
-        ORDER BY month_key DESC
-        LIMIT 3
+    """
+    row = _fetch_one(cursor, sql, params) or {}
+    total = _safe_int(row.get("total"))
+    success = _safe_int(row.get("success_calls"))
+    errors = _safe_int(row.get("error_calls"))
+    success_rate = (success / total * 100.0) if total else 0.0
+    error_rate = (errors / total * 100.0) if total else 0.0
+    growth = "0.0%"
+    if previous_total:
+        diff = ((total - previous_total) / previous_total) * 100.0
+        growth = ("+" if diff >= 0 else "") + f"{diff:.1f}%"
+
+    return {
+        "weeklyRange": weekly_range,
+        "weeklyRangeLabel": _weekly_range_label(weekly_range),
+        "total": _fmt_num(total),
+        "avgDaily": _fmt_num(round(total / 7)),
+        "successRate": _fmt_pct(success_rate),
+        "errorCalls": _fmt_num(errors),
+        "errorRate": _fmt_pct(error_rate),
+        "avgResponse": _fmt_ms(row.get("avg_response_ms")),
+        "growth": growth,
+        "period": f"{selected_start.strftime('%d %b')} - {(selected_end - timedelta(days=1)).strftime('%d %b')}",
+    }
+
+
+
+def _month_options(tz_offset_minutes: int) -> List[Dict[str, str]]:
+    today = _local_now(tz_offset_minutes).date()
+    options: List[Dict[str, str]] = []
+    for i in range(6):
+        month_date = _previous_month(today, i)
+        month_key = month_date.strftime("%Y-%m")
+        options.append({
+            "value": month_key,
+            "label": month_date.strftime("%B %Y"),
+        })
+    return options
+
+
+def _normalize_month_key(month_key: Optional[str], tz_offset_minutes: int) -> str:
+    allowed = [item["value"] for item in _month_options(tz_offset_minutes)]
+    value = str(month_key or "").strip()
+    if value in allowed:
+        return value
+    return allowed[0]
+
+
+def _month_label(month_key: str) -> str:
+    try:
+        return datetime.strptime(month_key, "%Y-%m").strftime("%B %Y")
+    except Exception:
+        return month_key
+
+
+def _month_bounds_from_key(month_key: str, tz_offset_minutes: int) -> Tuple[datetime, datetime]:
+    try:
+        month_date = datetime.strptime(month_key, "%Y-%m").date()
+    except Exception:
+        month_date = _local_now(tz_offset_minutes).date().replace(day=1)
+    start_local = datetime.combine(month_date.replace(day=1), datetime.min.time())
+    last_day = calendar.monthrange(month_date.year, month_date.month)[1]
+    end_local = datetime.combine(month_date.replace(day=last_day) + timedelta(days=1), datetime.min.time())
+    return _local_to_utc(start_local, tz_offset_minutes), _local_to_utc(end_local, tz_offset_minutes)
+
+
+def _month_summary(cursor, table: str, client: Dict[str, Any], month_key: str, quota: float, tz_offset_minutes: int) -> Dict[str, Any]:
+    start_dt, end_dt = _month_bounds_from_key(month_key, tz_offset_minutes)
+    where_sql, params = _base_where(client, start_dt, end_dt)
+    row = _fetch_one(cursor, f"""
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN http_status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) AS success_calls,
+            SUM(CASE WHEN http_status_code >= 400 THEN 1 ELSE 0 END) AS error_calls,
+            AVG(execution_time_ms) AS avg_response_ms
+        FROM `{table}`
+        WHERE {where_sql}
+    """, params) or {}
+    total = _safe_int(row.get("total"))
+    success = _safe_int(row.get("success_calls"))
+    errors = _safe_int(row.get("error_calls"))
+    success_rate = (success / total * 100.0) if total else 0.0
+    quota_used = f"{(total / quota * 100.0):.0f}%" if quota else "Not Set"
+    return {
+        "monthKey": month_key,
+        "monthLabel": _month_label(month_key),
+        "total_num": total,
+        "success_num": success,
+        "error_num": errors,
+        "total": _fmt_num(total),
+        "success": _fmt_num(success),
+        "errors": _fmt_num(errors),
+        "successRate": _fmt_pct(success_rate),
+        "avgResponse": _fmt_ms(row.get("avg_response_ms")),
+        "quotaUsage": quota_used,
+    }
+
+
+def _monthly_endpoint_share(cursor, table: str, client: Dict[str, Any], month_key: str, total_calls: int, tz_offset_minutes: int) -> List[List[str]]:
+    start_dt, end_dt = _month_bounds_from_key(month_key, tz_offset_minutes)
+    return _top_endpoints(cursor, table, client, start_dt, end_dt, total_calls)
+
+
+def _monthly_calendar_days(cursor, table: str, client: Dict[str, Any], month_key: str, tz_offset_minutes: int) -> List[Dict[str, Any]]:
+    start_dt, end_dt = _month_bounds_from_key(month_key, tz_offset_minutes)
+    where_sql, params = _base_where(client, start_dt, end_dt)
+    local_expr = _local_created_expr(tz_offset_minutes)
+    sql = f"""
+        SELECT
+            DATE({local_expr}) AS local_day,
+            COUNT(*) AS total,
+            SUM(CASE WHEN http_status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) AS success_calls,
+            SUM(CASE WHEN http_status_code >= 400 THEN 1 ELSE 0 END) AS error_calls
+        FROM `{table}`
+        WHERE {where_sql}
+        GROUP BY DATE({local_expr})
+        ORDER BY local_day ASC
     """
     rows = _fetch_all(cursor, sql, params)
-    output: List[List[str]] = []
-    for row in rows:
-        month_key = str(row.get("month_key") or "")
-        try:
-            month_label = datetime.strptime(month_key, "%Y-%m").strftime("%B %Y")
-        except Exception:
-            month_label = month_key
+    by_day = {str(row.get("local_day")): row for row in rows}
+
+    try:
+        month_date = datetime.strptime(month_key, "%Y-%m").date()
+    except Exception:
+        month_date = _local_now(tz_offset_minutes).date().replace(day=1)
+
+    last_day = calendar.monthrange(month_date.year, month_date.month)[1]
+    result: List[Dict[str, Any]] = []
+    max_total = 0
+    for day in range(1, last_day + 1):
+        local_day = date(month_date.year, month_date.month, day)
+        row = by_day.get(str(local_day)) or {}
         total = _safe_int(row.get("total"))
-        success = _safe_int(row.get("success_calls"))
-        success_rate = (success / total * 100.0) if total else 0.0
-        quota_used = f"{(total / quota * 100.0):.0f}%" if quota else "Not Set"
-        output.append([
-            month_label,
-            _fmt_num(total),
-            _fmt_num(success),
-            _fmt_num(row.get("error_calls")),
-            _fmt_pct(success_rate),
-            _fmt_ms(row.get("avg_response_ms")),
-            quota_used,
+        max_total = max(max_total, total)
+        result.append({
+            "date": local_day.strftime("%Y-%m-%d"),
+            "day": day,
+            "total": total,
+            "success": _safe_int(row.get("success_calls")),
+            "errors": _safe_int(row.get("error_calls")),
+            "calls": [],
+        })
+
+    # Attach recent calls per day. The selected month has at most 31 days, so this is acceptable for a visual report.
+    calls_sql = f"""
+        SELECT
+            log_id,
+            created_at,
+            request_method,
+            endpoint,
+            http_status_code,
+            execution_time_ms,
+            ip_address,
+            api_key_prefix,
+            error_code,
+            DATE({local_expr}) AS local_day
+        FROM `{table}`
+        WHERE {where_sql}
+        ORDER BY created_at DESC
+        LIMIT 500
+    """
+    call_rows = _fetch_all(cursor, calls_sql, params)
+    day_map = {item["date"]: item for item in result}
+    for row in call_rows:
+        key = str(row.get("local_day") or "")
+        if key in day_map and len(day_map[key]["calls"]) < 100:
+            day_map[key]["calls"].append(_format_call_row(row, tz_offset_minutes))
+
+    for item in result:
+        item["intensity"] = (item["total"] / max_total) if max_total else 0
+    return result
+
+
+def _month_rows(cursor, table: str, client: Dict[str, Any], quota: float, tz_offset_minutes: int) -> List[List[str]]:
+    rows: List[List[str]] = []
+    for option in _month_options(tz_offset_minutes):
+        summary = _month_summary(cursor, table, client, option["value"], quota, tz_offset_minutes)
+        rows.append([
+            summary["monthLabel"],
+            summary["total"],
+            summary["success"],
+            summary["errors"],
+            summary["successRate"],
+            summary["avgResponse"],
+            summary["quotaUsage"],
         ])
-    if not output:
-        output.append([_local_now(tz_offset_minutes).strftime("%B %Y"), "0", "0", "0", "0.0%", "0ms", "Not Set" if not quota else "0%"] )
-    return output
+    return rows
 
 
 def _month_used(cursor, table: str, client: Dict[str, Any], tz_offset_minutes: int) -> int:
@@ -898,11 +1132,139 @@ def _projected_usage(month_used: int, tz_offset_minutes: int) -> int:
     return int(round((month_used / float(day)) * last_day)) if month_used else 0
 
 
-def _detailed_calls(cursor, table: str, client: Dict[str, Any], start_dt: datetime, end_dt: datetime, page: int, per_page: int, tz_offset_minutes: int) -> List[List[str]]:
+def _csv_values(value: Optional[str], allowed: Optional[List[str]] = None) -> List[str]:
+    if not value:
+        return []
+
+    allowed_set = set([str(v).upper() for v in allowed]) if allowed else None
+    values: List[str] = []
+    for item in str(value).replace("|", ",").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        upper = item.upper()
+        if upper in ["ALL", "ALL_METHODS", "ALL_STATUSES"]:
+            return []
+        if allowed_set is not None and upper not in allowed_set:
+            continue
+        if upper not in values:
+            values.append(upper)
+    return values
+
+
+def _calls_range_dates(
+    calls_range: Optional[str],
+    calls_date_from: Optional[str],
+    calls_date_to: Optional[str],
+    tz_offset_minutes: int,
+) -> Tuple[datetime, datetime]:
+    value = str(calls_range or "last_24_hours").strip().lower()
+    now_local = _local_now(tz_offset_minutes)
+
+    if value == "custom_range":
+        start_date = _parse_date(calls_date_from)
+        end_date = _parse_date(calls_date_to)
+        if start_date and end_date:
+            start = datetime.combine(start_date, datetime.min.time())
+            end = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+            return _local_to_utc(start, tz_offset_minutes), _local_to_utc(end, tz_offset_minutes)
+
+    if value == "last_7_days":
+        start_local = now_local - timedelta(days=7)
+    elif value == "last_15_days":
+        start_local = now_local - timedelta(days=15)
+    elif value == "last_30_days":
+        start_local = now_local - timedelta(days=30)
+    else:
+        start_local = now_local - timedelta(hours=24)
+
+    return _local_to_utc(start_local, tz_offset_minutes), _local_to_utc(now_local, tz_offset_minutes)
+
+
+def _detailed_calls_where(
+    client: Dict[str, Any],
+    start_dt: datetime,
+    end_dt: datetime,
+    call_search: Optional[str] = None,
+    call_methods: Optional[str] = None,
+    call_statuses: Optional[str] = None,
+) -> Tuple[str, Tuple[Any, ...]]:
+    where_sql, base_params = _base_where(client, start_dt, end_dt)
+    where_parts = [where_sql]
+    params: List[Any] = list(base_params)
+
+    methods = _csv_values(call_methods, ["GET", "POST", "PUT", "PATCH", "DELETE"])
+    if methods:
+        placeholders = ", ".join(["%s"] * len(methods))
+        where_parts.append(f"UPPER(COALESCE(request_method, '')) IN ({placeholders})")
+        params.extend(methods)
+
+    statuses = _csv_values(call_statuses, ["2XX", "3XX", "4XX", "5XX"])
+    status_parts: List[str] = []
+    for status in statuses:
+        if status == "2XX":
+            status_parts.append("http_status_code BETWEEN 200 AND 299")
+        elif status == "3XX":
+            status_parts.append("http_status_code BETWEEN 300 AND 399")
+        elif status == "4XX":
+            status_parts.append("http_status_code BETWEEN 400 AND 499")
+        elif status == "5XX":
+            status_parts.append("http_status_code >= 500")
+    if status_parts:
+        where_parts.append("(" + " OR ".join(status_parts) + ")")
+
+    search = str(call_search or "").strip()
+    if search:
+        like = "%" + search + "%"
+        where_parts.append("(" + " OR ".join([
+            "COALESCE(endpoint, '') LIKE %s",
+            "COALESCE(ip_address, '') LIKE %s",
+            "COALESCE(api_key_prefix, '') LIKE %s",
+            "COALESCE(error_code, '') LIKE %s",
+            "CAST(log_id AS CHAR) LIKE %s",
+        ]) + ")")
+        params.extend([like, like, like, like, like])
+
+    return " AND ".join(where_parts), tuple(params)
+
+
+def _detailed_calls(
+    cursor,
+    table: str,
+    client: Dict[str, Any],
+    start_dt: datetime,
+    end_dt: datetime,
+    page: int,
+    per_page: int,
+    tz_offset_minutes: int,
+    call_search: Optional[str] = None,
+    call_methods: Optional[str] = None,
+    call_statuses: Optional[str] = None,
+) -> Dict[str, Any]:
     page = max(page, 1)
-    per_page = max(min(per_page, 50), 1)
+    per_page = max(min(per_page, 100), 1)
     offset = (page - 1) * per_page
-    where_sql, params = _base_where(client, start_dt, end_dt)
+    where_sql, params = _detailed_calls_where(
+        client=client,
+        start_dt=start_dt,
+        end_dt=end_dt,
+        call_search=call_search,
+        call_methods=call_methods,
+        call_statuses=call_statuses,
+    )
+
+    count_sql = f"""
+        SELECT COUNT(*) AS total
+        FROM `{table}`
+        WHERE {where_sql}
+    """
+    count_row = _fetch_one(cursor, count_sql, params) or {}
+    total = _safe_int(count_row.get("total"))
+    total_pages = int((total + per_page - 1) / per_page) if total else 1
+    if page > total_pages:
+        page = total_pages
+        offset = (page - 1) * per_page
+
     sql = f"""
         SELECT
             log_id,
@@ -920,7 +1282,21 @@ def _detailed_calls(cursor, table: str, client: Dict[str, Any], start_dt: dateti
         LIMIT {int(per_page)} OFFSET {int(offset)}
     """
     rows = _fetch_all(cursor, sql, params)
-    return [_format_call_row(row, tz_offset_minutes) for row in rows]
+
+    shown_from = offset + 1 if total and rows else 0
+    shown_to = offset + len(rows) if total and rows else 0
+
+    return {
+        "rows": [_format_call_row(row, tz_offset_minutes) for row in rows],
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "from": shown_from,
+            "to": shown_to,
+        },
+    }
 
 
 def _key_count(client: Dict[str, Any]) -> int:
@@ -935,7 +1311,7 @@ def _env_api_key(client: Dict[str, Any], env: str) -> str:
     return _mask_key(client.get("production_api_key") or client.get("api_key"))
 
 
-def _build_environment_report(cursor, client: Dict[str, Any], env: str, range_key: str, date_from: Optional[str], date_to: Optional[str], page: int, per_page: int, timezone_name: str, timezone_offset_minutes: int, daily_date: Optional[str] = None) -> Dict[str, Any]:
+def _build_environment_report(cursor, client: Dict[str, Any], env: str, range_key: str, date_from: Optional[str], date_to: Optional[str], page: int, per_page: int, timezone_name: str, timezone_offset_minutes: int, daily_date: Optional[str] = None, weekly_range: Optional[str] = "this_week", monthly_month: Optional[str] = None, call_search: Optional[str] = None, call_methods: Optional[str] = None, call_statuses: Optional[str] = None, calls_range: Optional[str] = "last_24_hours", calls_date_from: Optional[str] = None, calls_date_to: Optional[str] = None) -> Dict[str, Any]:
     env_conf = ENVIRONMENTS[env]
     table = env_conf["table"]
     start_dt, end_dt = _range_dates(range_key, date_from, date_to, timezone_offset_minutes)
@@ -944,6 +1320,10 @@ def _build_environment_report(cursor, client: Dict[str, Any], env: str, range_ke
 
     monthly_quota = _safe_float(client.get("monthly_quota"), 0.0)
     rate_limit = _safe_float(client.get("rate_limit"), 0.0)
+    selected_month_key = _normalize_month_key(monthly_month, timezone_offset_minutes)
+    monthly_summary = _month_summary(cursor, table, client, selected_month_key, monthly_quota, timezone_offset_minutes)
+    monthly_calendar = _monthly_calendar_days(cursor, table, client, selected_month_key, timezone_offset_minutes)
+    monthly_endpoint_share = _monthly_endpoint_share(cursor, table, client, selected_month_key, monthly_summary.get("total_num", 0), timezone_offset_minutes)
     projected = _projected_usage(month_used, timezone_offset_minutes)
 
     top_error_status, top_error_text = _top_error(cursor, table, client, start_dt, end_dt)
@@ -953,8 +1333,24 @@ def _build_environment_report(cursor, client: Dict[str, Any], env: str, range_ke
     peak = _peak_hour_for_date(cursor, table, client, selected_day, timezone_offset_minutes)
     daily_success, daily_fail = _hourly_for_date(cursor, table, client, selected_day, timezone_offset_minutes)
     trend, fail = _daily_trend(cursor, table, client, start_dt, end_dt, timezone_offset_minutes)
-    weekly_this, weekly_prev = _weekly_arrays(cursor, table, client, timezone_offset_minutes)
+    weekly_range_key = _normalize_weekly_range(weekly_range)
+    weekly_this, weekly_prev = _weekly_arrays(cursor, table, client, timezone_offset_minutes, weekly_range_key)
+    weekly_summary = _weekly_summary(cursor, table, client, timezone_offset_minutes, weekly_range_key)
     endpoints = _top_endpoints(cursor, table, client, start_dt, end_dt, summary["total"])
+    calls_start_dt, calls_end_dt = _calls_range_dates(calls_range, calls_date_from, calls_date_to, timezone_offset_minutes)
+    detailed_calls = _detailed_calls(
+        cursor=cursor,
+        table=table,
+        client=client,
+        start_dt=calls_start_dt,
+        end_dt=calls_end_dt,
+        page=page,
+        per_page=per_page,
+        tz_offset_minutes=timezone_offset_minutes,
+        call_search=call_search,
+        call_methods=call_methods,
+        call_statuses=call_statuses,
+    )
 
     total = summary["total"]
     error_calls = summary["error_calls"]
@@ -1014,16 +1410,39 @@ def _build_environment_report(cursor, client: Dict[str, Any], env: str, range_ke
         "peakTime": peak.get("peak_time"),
         "peakCallsValue": _fmt_num(peak.get("peak_calls")),
         "peakResponseValue": peak.get("peak_response"),
+        "weeklyRange": weekly_range_key,
+        "weeklyRangeLabel": weekly_summary.get("weeklyRangeLabel"),
+        "weeklyGraphTitle": ("This Week vs Last Week Graph" if weekly_range_key == "this_week" else ("Last Week vs Previous Week Graph" if weekly_range_key == "last_week" else "Current Week vs Last Week Graph")),
+        "weeklyCurrentLabel": ("This week" if weekly_range_key != "last_week" else "Last week"),
+        "weeklyPreviousLabel": ("Last week" if weekly_range_key != "last_week" else "Previous week"),
+        "weeklySummary": weekly_summary,
         "weeklyThis": weekly_this,
         "weeklyPrev": weekly_prev,
-        "weeklyRows": _weekly_rows(cursor, table, client, timezone_offset_minutes),
+        "weeklyRows": _weekly_rows(cursor, table, client, timezone_offset_minutes, weekly_range_key),
         "endpoints": endpoints,
         "endpointOptions": _endpoint_options(endpoints),
         "errorBuckets": _error_buckets(cursor, table, client, start_dt, end_dt, timezone_offset_minutes),
         "keys": str(_key_count(client)),
+        "monthly": {
+            "selectedMonth": selected_month_key,
+            "monthLabel": monthly_summary.get("monthLabel"),
+            "monthOptions": _month_options(timezone_offset_minutes),
+            "summary": monthly_summary,
+            "calendar": monthly_calendar,
+            "endpointShare": monthly_endpoint_share,
+        },
         "monthPast": _month_rows(cursor, table, client, monthly_quota, timezone_offset_minutes),
         "dailyRows": [_single_day_row(cursor, table, client, monthly_quota, selected_day, timezone_offset_minutes)],
-        "calls": _detailed_calls(cursor, table, client, start_dt, end_dt, page, per_page, timezone_offset_minutes),
+        "calls": detailed_calls.get("rows", []),
+        "callsPagination": detailed_calls.get("pagination", {"page": page, "per_page": per_page, "total": 0, "total_pages": 1, "from": 0, "to": 0}),
+        "callsFilters": {
+            "search": call_search or "",
+            "methods": call_methods or "all",
+            "statuses": call_statuses or "all",
+            "range": calls_range or "last_24_hours",
+            "date_from": calls_date_from or "",
+            "date_to": calls_date_to or "",
+        },
     }
 
 
@@ -1038,6 +1457,14 @@ def build_client_apiusage_report(
     timezone: Optional[str] = None,
     timezone_offset_minutes: Optional[int] = None,
     daily_date: Optional[str] = None,
+    weekly_range: Optional[str] = "this_week",
+    monthly_month: Optional[str] = None,
+    call_search: Optional[str] = None,
+    call_methods: Optional[str] = None,
+    call_statuses: Optional[str] = None,
+    calls_range: Optional[str] = "last_24_hours",
+    calls_date_from: Optional[str] = None,
+    calls_date_to: Optional[str] = None,
 ) -> Dict[str, Any]:
     conn = None
     cursor = None
@@ -1056,7 +1483,27 @@ def build_client_apiusage_report(
         timezone_offset = _safe_timezone_offset(timezone_offset_minutes)
         envs = {}
         for env in ["sandbox", "staging", "production"]:
-            envs[env] = _build_environment_report(cursor, client, env, range_key, date_from, date_to, page, per_page, timezone_name, timezone_offset, daily_date)
+            envs[env] = _build_environment_report(
+                cursor,
+                client,
+                env,
+                range_key,
+                date_from,
+                date_to,
+                page,
+                per_page,
+                timezone_name,
+                timezone_offset,
+                daily_date,
+                weekly_range,
+                monthly_month,
+                call_search,
+                call_methods,
+                call_statuses,
+                calls_range,
+                calls_date_from,
+                calls_date_to,
+            )
 
         return {
             "valid": True,
