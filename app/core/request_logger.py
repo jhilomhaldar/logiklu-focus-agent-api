@@ -9,9 +9,95 @@ from starlette.responses import Response as StarletteResponse
 from app.db.master import get_master_connection
 
 from app.config import settings
+from app.core.security import decode_and_verify_jwt_token, build_auth_context_from_jwt_payload
 
 
 MAX_BODY_LOG_LENGTH = 10000
+
+
+NO_API_LOG_PATH_PREFIXES = (
+    "/client/apiusage",
+    "/instructions",
+    "/masterinstruction",
+    "/masterinstructions",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/favicon.ico",
+    "/static",
+)
+
+
+def should_skip_api_log_path(path: str) -> bool:
+    path = str(path or "")
+
+    for prefix in NO_API_LOG_PATH_PREFIXES:
+        if path.startswith(prefix):
+            return True
+
+    return False
+
+
+def get_bearer_token_from_request(request: Request) -> str:
+    authorization = request.headers.get("Authorization", "")
+
+    if not authorization:
+        return ""
+
+    parts = authorization.split(" ", 1)
+
+    if len(parts) != 2:
+        return ""
+
+    if parts[0].strip().lower() != "bearer":
+        return ""
+
+    return parts[1].strip()
+
+
+def get_jwt_api_key_prefix(auth_context: dict) -> str:
+    oauth_client_id = str(auth_context.get("oauth_client_id") or "").strip()
+
+    if oauth_client_id:
+        return ("jwt:" + oauth_client_id)[:30]
+
+    api_client_id = auth_context.get("api_client_id")
+
+    if api_client_id:
+        return ("jwt_client:" + str(api_client_id))[:30]
+
+    return "jwt_bearer"
+
+
+def resolve_bearer_auth_context_for_logging(request: Request) -> Optional[dict]:
+    """
+    Resolve the client context directly from a Bearer JWT before route handling.
+
+    This is required for invalid-route calls such as /rolesa. Those calls never
+    reach endpoint-level dependencies, so request.state.auth_context would remain
+    empty unless the logger resolves the token itself.
+    """
+
+    token = get_bearer_token_from_request(request)
+
+    if not token:
+        return None
+
+    try:
+        payload = decode_and_verify_jwt_token(token)
+        auth_context = build_auth_context_from_jwt_payload(payload)
+
+        if not auth_context.get("api_client_id") or not auth_context.get("domain_id"):
+            return None
+
+        request.state.auth_context = auth_context
+
+        return auth_context
+
+    except Exception:
+        # Invalid/expired/malformed Bearer tokens are not authenticated API calls.
+        # Do not log them in client usage reports.
+        return None
 
 
 def get_api_environment() -> str:
@@ -243,10 +329,22 @@ def insert_api_request_log(
 
 
 async def api_request_logger_middleware(request: Request, call_next):
+    path = str(request.url.path)
+
+    if should_skip_api_log_path(path):
+        return await call_next(request)
+
+    auth_context = resolve_bearer_auth_context_for_logging(request)
+
+    if not auth_context:
+        # Usage logs are only for secured authenticated API calls with Bearer JWT.
+        # Public pages, OAuth token calls, browser pages, and unauthenticated hits
+        # are not inserted into lk_agent_api_request_logs*.
+        return await call_next(request)
+
     start_time = time.time()
     environment = get_api_environment()
 
-    api_key = request.headers.get("X-API-KEY", "")
     request_body = ""
     body_bytes = b""
 
@@ -286,15 +384,15 @@ async def api_request_logger_middleware(request: Request, call_next):
     finally:
         execution_time_ms = int((time.time() - start_time) * 1000)
 
-        auth_context = getattr(request.state, "auth_context", None)
+        auth_context = getattr(request.state, "auth_context", None) or auth_context
 
         insert_api_request_log(
             api_client_id=auth_context.get("api_client_id") if auth_context else None,
             domain_id=auth_context.get("domain_id") if auth_context else None,
             client_database=auth_context.get("client_database") if auth_context else "",
             environment=environment,
-            api_key_prefix=get_api_key_prefix(api_key),
-            endpoint=str(request.url.path),
+            api_key_prefix=get_jwt_api_key_prefix(auth_context or {}),
+            endpoint=path,
             request_method=request.method,
             ip_address=get_client_ip(request),
             user_agent=request.headers.get("user-agent", ""),

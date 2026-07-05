@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LogiKlu API Usage Center</title>
+<style>
+:root{
+  --bg:#0B0E14;
+  --surface:#121620;
+  --surface-2:#1A1F2B;
+  --surface-3:#222836;
+  --surface-4:#2A3142;
+  --border:#242B3A;
+  --border-soft:#1B202C;
+  --text:#E7E9EE;
+  --text-dim:#8890A0;
+  --text-faint:#565D6D;
+  --accent:#5EEAD4;
+  --accent-soft:rgba(94,234,212,0.12);
+  --accent-line:rgba(94,234,212,0.36);
+  --success:#34D399;
+  --success-soft:rgba(52,211,153,0.12);
+  --warn:#F5A623;
+  --warn-soft:rgba(245,166,35,0.13);
+  --error:#F4415F;
+  --error-soft:rgba(244,65,95,0.13);
+  --info:#60A5FA;
+  --info-soft:rgba(96,165,250,0.12);
+  --purple:#A78BFA;
+  --purple-soft:rgba(167,139,250,0.12);
+  --radius:12px;
+  --shadow:0 20px 60px rgba(0,0,0,0.22);
+  --font-display:Arial,Helvetica,sans-serif;
+  --font-body:Arial,Helvetica,sans-serif;
+  --font-mono:Consolas,Monaco,'Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{min-height:100%;}
+body{
+  background:radial-gradient(circle at top right,rgba(94,234,212,0.08),transparent 28%),var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  -webkit-font-smoothing:antialiased;
+  display:flex;
+  min-height:100vh;
+}
+button,input,select{font-family:inherit;}
+button{cursor:pointer;}
+table{width:100%;border-collapse:collapse;}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
+
+/* Sidebar */
+.sidebar{
+  width:252px;
+  flex:0 0 252px;
+  background:linear-gradient(180deg,#121620,#0E121B);
+  border-right:1px solid var(--border-soft);
+  height:100vh;
+  position:sticky;
+  top:0;
+  padding:22px 16px;
+  display:flex;
+  flex-direction:column;
+  z-index:5;
+}
+.brand{display:flex;align-items:center;gap:11px;padding:4px 8px 24px;}
+.brand-mark{
+  width:33px;height:33px;border-radius:9px;
+  background:linear-gradient(135deg,var(--accent),#2FA391);
+  color:#06201C;
+  display:grid;place-items:center;
+  font-weight:900;
+  letter-spacing:-1px;
+}
+.brand-name{font-size:17px;font-weight:800;letter-spacing:.2px;}
+.brand-sub{font-size:10px;color:var(--text-faint);letter-spacing:1.2px;font-family:var(--font-mono);margin-top:2px;}
+.nav-label{display:block;font-size:10px;color:var(--text-faint);text-transform:uppercase;letter-spacing:1.2px;font-weight:800;padding:17px 10px 8px;}
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  width:100%;border:1px solid transparent;background:transparent;color:var(--text-dim);
+  padding:10px 11px;border-radius:9px;font-size:13.5px;font-weight:700;text-align:left;margin-bottom:3px;
+  transition:background .16s ease,color .16s ease,border .16s ease;
+}
+.nav-icon{width:24px;height:24px;border-radius:8px;background:rgba(136,144,160,0.08);display:grid;place-items:center;font-size:13px;}
+.nav-item:hover{background:var(--surface-2);color:var(--text);}
+.nav-item.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line);}
+.nav-item.active .nav-icon{background:rgba(94,234,212,0.14);}
+.side-env{
+  margin-top:auto;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:14px;
+  background:linear-gradient(180deg,var(--surface-2),rgba(26,31,43,.72));
+}
+.side-env-title{font-size:11px;color:var(--text-dim);font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;}
+.side-env-name{font-size:18px;font-weight:800;margin-bottom:8px;}
+.side-env-url{font-size:10.5px;color:var(--accent);word-break:break-all;line-height:1.45;}
+.meter{height:7px;background:var(--surface-3);border-radius:999px;overflow:hidden;margin:12px 0 8px;}
+.meter>span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--info));width:0;}
+.side-env-note{font-size:11px;color:var(--text-faint);line-height:1.45;}
+
+/* Main */
+.main{flex:1;min-width:0;display:flex;flex-direction:column;}
+.topbar{
+  padding:20px 28px;
+  border-bottom:1px solid var(--border-soft);
+  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  background:rgba(11,14,20,0.75);
+  backdrop-filter:blur(10px);
+  position:sticky;top:0;z-index:4;
+}
+.title-wrap h1{font-size:22px;line-height:1.2;margin-bottom:3px;}
+.title-wrap p{font-size:12.5px;color:var(--text-faint);}
+.top-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;}
+.btn,.select,.field{
+  border:1px solid var(--border);
+  background:var(--surface-2);
+  color:var(--text-dim);
+  border-radius:9px;
+  padding:9px 12px;
+  font-size:12.5px;
+  outline:none;
+}
+.btn:hover,.select:hover{color:var(--text);border-color:var(--surface-4);}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#06201C;font-weight:900;}
+.btn.danger{background:var(--error-soft);border-color:rgba(244,65,95,.25);color:var(--error);font-weight:800;}
+.btn.ghost{background:transparent;}
+.env-switcher{
+  padding:16px 28px;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:12px;
+  border-bottom:1px solid var(--border-soft);
+  background:linear-gradient(180deg,rgba(94,234,212,0.035),transparent);
+}
+.env-card{
+  border:1px solid var(--border-soft);
+  border-radius:var(--radius);
+  background:var(--surface);
+  padding:14px;
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  transition:.16s ease;
+}
+.env-card:hover{border-color:var(--accent-line);transform:translateY(-1px);}
+.env-card.active{background:var(--accent-soft);border-color:var(--accent-line);box-shadow:0 0 0 1px rgba(94,234,212,.05) inset;}
+.env-name{font-size:14px;font-weight:900;margin-bottom:4px;display:flex;gap:8px;align-items:center;}
+.env-url{font-family:var(--font-mono);font-size:11px;color:var(--text-faint);word-break:break-all;}
+.env-status{font-size:10.5px;border-radius:999px;padding:5px 8px;font-weight:900;font-family:var(--font-mono);white-space:nowrap;}
+.env-status.ok{background:var(--success-soft);color:var(--success);}
+.env-status.warn{background:var(--warn-soft);color:var(--warn);}
+.env-status.live{background:var(--error-soft);color:var(--error);}
+
+.pulse-strip{
+  padding:12px 28px;
+  display:flex;align-items:center;gap:18px;
+  border-bottom:1px solid var(--border-soft);
+}
+.pulse-live{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:11px;color:var(--accent);font-weight:900;letter-spacing:.4px;}
+.dot-live{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 0 rgba(94,234,212,.6);animation:ping 1.8s infinite;}
+@keyframes ping{70%{box-shadow:0 0 0 7px rgba(94,234,212,0);}100%{box-shadow:0 0 0 0 rgba(94,234,212,0);}}
+.pulse-svg{flex:1;height:34px;min-width:160px;}
+.pulse-figures{display:flex;gap:24px;flex-wrap:wrap;}
+.pulse-figures b{display:block;font-size:14px;color:var(--text);}
+.pulse-figures span{display:block;font-size:10px;color:var(--text-faint);letter-spacing:.4px;margin-top:2px;}
+.content{padding:24px 28px 60px;}
+.view{display:none;animation:fade .22s ease;}
+.view.active{display:block;}
+@keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px;}
+.section-head h2{font-size:22px;margin-bottom:5px;}
+.section-head p{font-size:13px;color:var(--text-dim);line-height:1.45;}
+.filters{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end;}
+
+/* Cards */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px;}
+.kpi-card,.panel,.report-card{
+  background:linear-gradient(180deg,rgba(18,22,32,.98),rgba(18,22,32,.88));
+  border:1px solid var(--border-soft);
+  border-radius:var(--radius);
+  padding:18px;
+  box-shadow:0 8px 24px rgba(0,0,0,.12);
+}
+.kpi-card{position:relative;overflow:hidden;}
+.kpi-card:after{content:"";position:absolute;right:-34px;top:-34px;width:94px;height:94px;border-radius:50%;background:var(--accent-soft);}
+.kpi-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px;position:relative;z-index:1;}
+.kpi-label{font-size:11px;text-transform:uppercase;letter-spacing:.65px;color:var(--text-dim);font-weight:900;}
+.kpi-icon{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-size:15px;position:relative;z-index:1;}
+.kpi-icon.accent{background:var(--accent-soft);color:var(--accent);}
+.kpi-icon.success{background:var(--success-soft);color:var(--success);}
+.kpi-icon.warn{background:var(--warn-soft);color:var(--warn);}
+.kpi-icon.error{background:var(--error-soft);color:var(--error);}
+.kpi-icon.info{background:var(--info-soft);color:var(--info);}
+.kpi-value{font-size:27px;font-weight:900;line-height:1.12;position:relative;z-index:1;}
+.kpi-delta{font-size:11.5px;margin-top:7px;font-family:var(--font-mono);position:relative;z-index:1;}
+.up{color:var(--success);} .down{color:var(--error);} .flat{color:var(--text-faint);} .warn-text{color:var(--warn);}
+.grid-2{display:grid;grid-template-columns:1.55fr 1fr;gap:14px;margin-bottom:14px;}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;}
+.panel{margin-bottom:14px;}
+.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:16px;}
+.panel-title{font-size:15px;font-weight:900;}
+.panel-sub{font-size:11.5px;color:var(--text-faint);line-height:1.45;margin-top:3px;}
+.legend{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);}
+.legend-dot{width:8px;height:8px;border-radius:3px;}
+
+/* Charts */
+.chart-wrap{height:250px;position:relative;}
+.chart-wrap svg{width:100%;height:100%;overflow:visible;}
+.chart-axis-labels{display:flex;justify-content:space-between;margin-top:9px;font-size:10.5px;color:var(--text-faint);font-family:var(--font-mono);}
+.bars{height:230px;display:flex;align-items:flex-end;gap:9px;padding-top:22px;border-bottom:1px solid var(--border-soft);}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;height:100%;justify-content:flex-end;min-width:0;}
+.bar-stack{width:100%;max-width:36px;border-radius:7px 7px 3px 3px;background:var(--surface-3);overflow:hidden;display:flex;flex-direction:column-reverse;}
+.bar-fill{width:100%;background:linear-gradient(180deg,var(--accent),#2FA391);}
+.bar-fill.err{background:var(--error);}
+.bar-fill.prev{background:var(--surface-4);}
+.bar-label,.bar-val{font-size:10px;font-family:var(--font-mono);color:var(--text-faint);white-space:nowrap;}
+.bar-val{color:var(--text-dim);}
+.week-compare-col{display:grid;grid-template-columns:1fr 1fr;align-items:end;gap:5px;flex:1;height:100%;min-width:0;}
+.week-compare-col .bar-col{height:100%;}
+.week-label{grid-column:1/3;text-align:center;font-size:10.5px;color:var(--text-faint);font-family:var(--font-mono);}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;}
+.cal-dow{font-size:10px;color:var(--text-faint);text-align:center;font-weight:900;letter-spacing:.4px;padding-bottom:3px;}
+.cal-cell{min-height:66px;border:1px solid var(--border-soft);border-radius:9px;padding:7px;display:flex;flex-direction:column;justify-content:space-between;font-family:var(--font-mono);}
+.cal-cell.empty{border:none;background:transparent;}
+.cal-cell .d{font-size:10px;color:var(--text-faint);}
+.cal-cell .v{font-size:11px;color:var(--text);font-weight:900;}
+
+/* Tables / lists */
+.table-card{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius);overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.12);margin-bottom:14px;}
+.table-responsive{overflow-x:auto;width:100%;}
+th{background:rgba(26,31,43,.82);color:var(--text-faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;text-align:left;padding:13px 14px;border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:13px 14px;border-bottom:1px solid var(--border-soft);font-size:12.5px;color:var(--text-dim);white-space:nowrap;}
+tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:var(--surface-2);}
+code{font-family:var(--font-mono);color:var(--text);}
+.method{display:inline-flex;align-items:center;justify-content:center;min-width:54px;padding:4px 8px;border-radius:7px;font-size:11px;font-weight:900;font-family:var(--font-mono);}
+.method.get{background:var(--accent-soft);color:var(--accent);}
+.method.post{background:var(--success-soft);color:var(--success);}
+.method.put{background:var(--warn-soft);color:var(--warn);}
+.method.delete{background:var(--error-soft);color:var(--error);}
+.code-pill,.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:900;font-family:var(--font-mono);}
+.code-2xx,.pill.ok{background:var(--success-soft);color:var(--success);}
+.code-4xx,.pill.warn{background:var(--warn-soft);color:var(--warn);}
+.code-5xx,.pill.err{background:var(--error-soft);color:var(--error);}
+.pill:before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;}
+.pagination,.table-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-top:1px solid var(--border-soft);color:var(--text-faint);font-size:12px;}
+.page-buttons,.page-controls{display:flex;gap:6px;align-items:center;}
+.page-buttons button,.page-btn{min-width:30px;height:30px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-dim);border-radius:8px;font-weight:800;font-family:var(--font-mono);padding:0 9px;}
+.page-buttons button.active,.page-btn.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line);}
+.endpoint-list{display:grid;gap:12px;}
+.endpoint-item,.mini-stat,.error-row{display:flex;justify-content:space-between;gap:12px;align-items:center;border-bottom:1px solid var(--border-soft);padding:10px 0;}
+.endpoint-item:last-child,.mini-stat:last-child,.error-row:last-child{border-bottom:none;}
+.endpoint-path{font-family:var(--font-mono);font-weight:900;color:var(--text);font-size:12.5px;}
+.endpoint-sub,.mini-stat span:first-child,.error-sub{font-size:12px;color:var(--text-faint);line-height:1.45;}
+.endpoint-count,.mini-stat span:last-child{font-weight:900;color:var(--accent);font-family:var(--font-mono);}
+.report-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px;}
+.report-card h3{font-size:15px;margin-bottom:10px;}
+.usage-meter{margin:14px 0 18px;}
+.meter-head{display:flex;justify-content:space-between;font-size:12px;font-weight:900;color:var(--text-dim);margin-bottom:8px;}
+.meter-track{height:13px;background:var(--surface-3);border-radius:999px;overflow:hidden;}
+.meter-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--info));border-radius:999px;position:relative;}
+.quota-marks{display:grid;grid-template-columns:70fr 20fr 10fr;font-size:10.5px;color:var(--text-faint);margin-top:7px;}
+.quota-marks span:nth-child(2){text-align:center;color:var(--warn);}.quota-marks span:nth-child(3){text-align:right;color:var(--error);}
+.notice{border:1px dashed var(--accent-line);background:var(--accent-soft);border-radius:var(--radius);padding:13px 14px;color:var(--text-dim);font-size:12.5px;line-height:1.55;}
+.env-control-panel{display:grid;grid-template-columns:1.2fr 1fr;gap:14px;margin-bottom:14px;}
+.curl-box{background:#080B10;border:1px solid var(--border-soft);border-radius:var(--radius);padding:14px;font-size:11.5px;color:var(--text-dim);overflow:auto;line-height:1.6;}
+.error-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+.error-mini{background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;padding:12px;}
+.error-mini .label{font-size:10.5px;color:var(--text-faint);font-weight:900;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;}
+.error-mini .num{font-size:22px;font-weight:900;font-family:var(--font-mono);}
+.error-mini .hint{font-size:11px;color:var(--text-faint);margin-top:4px;}
+.filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+.search-input{flex:1;min-width:260px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:10px 12px;font-size:12.5px;}
+.search-input::placeholder{color:var(--text-faint);}
+.status-list{display:flex;flex-direction:column;gap:12px;}
+.status-row{display:flex;align-items:center;gap:10px;}
+.status-code{width:48px;font-family:var(--font-mono);font-size:12px;font-weight:900;}
+.status-bar-bg{flex:1;height:8px;background:var(--surface-3);border-radius:999px;overflow:hidden;}
+.status-bar-fill{height:100%;border-radius:999px;}
+.status-pct{width:50px;text-align:right;font-family:var(--font-mono);font-size:11.5px;color:var(--text-dim);}
+.callout-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.callout{background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;padding:13px;}
+.callout strong{display:block;font-size:12.5px;margin-bottom:6px;}.callout p{font-size:12px;color:var(--text-faint);line-height:1.45;}
+
+.brand-logo-img{max-width:190px;height:auto;display:block;}
+.brand{padding:6px 4px 24px;}
+.top-env-summary{border:1px solid var(--border);background:var(--surface-2);border-radius:9px;padding:8px 10px;min-width:260px;}
+.top-env-summary .small-label{font-size:10px;color:var(--text-faint);font-weight:900;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;}
+.top-env-summary .line{font-size:11.5px;color:var(--text-dim);line-height:1.45;word-break:break-all;}
+.top-env-summary code{color:var(--accent);}
+.date-filter{display:none;}
+.date-filter.active{display:inline-block;}
+.hidden{display:none!important;}
+.env-card{color:var(--text);text-align:left;}
+.env-card .env-name{color:var(--text);}
+.env-card .env-url{color:var(--text-dim);}
+.env-card[data-env="sandbox"] .env-name{color:var(--accent);}
+.env-card[data-env="staging"] .env-name{color:var(--warn);}
+.env-card[data-env="production"] .env-name{color:var(--error);}
+.endpoint-list{max-height:340px;overflow:auto;padding-right:4px;}
+.error-mini{cursor:pointer;transition:transform .16s ease,border-color .16s ease,background .16s ease;}
+.error-mini:hover{transform:translateY(-1px);border-color:var(--accent-line);background:var(--surface-3);}
+.error-mini.disabled{cursor:default;opacity:.62;}
+.error-mini.disabled:hover{transform:none;border-color:var(--border-soft);background:var(--surface-2);}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:24px;}
+.modal-backdrop.active{display:flex;}
+.modal-card{width:min(1040px,96vw);max-height:86vh;overflow:hidden;background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;}
+.modal-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:18px 20px;border-bottom:1px solid var(--border-soft);}
+.modal-title{font-size:18px;font-weight:900;}
+.modal-sub{font-size:12px;color:var(--text-faint);margin-top:4px;}
+.modal-close{border:1px solid var(--border);background:var(--surface-2);color:var(--text);border-radius:8px;padding:7px 10px;font-weight:900;}
+.modal-body{overflow:auto;padding:0;}
+.modal-empty{padding:22px;color:var(--text-faint);font-size:13px;}
+
+
+@media (max-width:1180px){
+  .kpi-grid,.report-grid{grid-template-columns:repeat(2,1fr);} .grid-2,.env-control-panel{grid-template-columns:1fr;} .grid-3{grid-template-columns:1fr 1fr;}
+}
+@media (max-width:900px){
+  body{display:block;} .sidebar{width:100%;height:auto;position:static;display:block;} .sidebar nav{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;} .nav-label,.side-env{display:none;} .nav-item{justify-content:center;flex-direction:column;font-size:11.5px;text-align:center;margin:0;} .env-switcher{grid-template-columns:1fr;} .pulse-strip{align-items:flex-start;flex-direction:column;} .pulse-svg{width:100%;} .topbar{position:static;} .grid-3,.callout-grid,.error-summary-grid{grid-template-columns:1fr;} .section-head{flex-direction:column;} .filters{justify-content:flex-start;}
+}
+@media (max-width:640px){
+  .content,.topbar,.env-switcher,.pulse-strip{padding-left:16px;padding-right:16px;} .kpi-grid,.report-grid{grid-template-columns:1fr;} .sidebar nav{grid-template-columns:repeat(2,1fr);} .bars{gap:5px;overflow-x:auto;padding-bottom:8px;} .bar-col,.week-compare-col{min-width:32px;} .cal-grid{gap:5px;} .cal-cell{min-height:54px;padding:5px;} .pagination,.table-foot{align-items:flex-start;flex-direction:column;}
+}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="brand">
+    <img class="brand-logo-img" src="/static/images/logiklu-logo.png" alt="LogiKlu" />
+  </div>
+  <nav>
+    <span class="nav-label">Overview</span>
+    <button class="nav-item active" data-view="dashboard"><span class="nav-icon">📊</span>Dashboard</button>
+    <span class="nav-label">Reports</span>
+    <button class="nav-item" data-view="daily"><span class="nav-icon">⏱</span>Daily</button>
+    <button class="nav-item" data-view="weekly"><span class="nav-icon">🗓</span>Weekly</button>
+    <button class="nav-item" data-view="monthly"><span class="nav-icon">📈</span>Monthly</button>
+    <span class="nav-label">Logs</span>
+    <button class="nav-item" data-view="calls"><span class="nav-icon">🔎</span>Detailed Calls</button>
+  </nav>
+  <div class="side-env">
+    <div class="side-env-title">Selected Environment</div>
+    <div class="side-env-name" id="sideEnvName">Sandbox</div>
+    <div class="side-env-url" id="sideEnvUrl">https://sandboxapi.logiklu.com</div>
+    <div class="meter"><span id="sideQuotaBar"></span></div>
+    <div class="side-env-note" id="sideEnvNote">36,245 / 50,000 calls used this month.</div>
+  </div>
+</aside>
+
+<main class="main">
+  <header class="topbar">
+    <div class="title-wrap">
+      <h1 id="pageTitle">Dashboard</h1>
+      <p id="pageSub">Monitor usage, quota, errors, trends, and request-level logs across all environments.</p>
+    </div>
+    <div class="top-actions">
+      <select class="select" id="envSelect">
+        <option value="sandbox">Sandbox</option>
+        <option value="staging">Stage / Staging</option>
+        <option value="production">Production</option>
+      </select>
+      <select class="select" id="rangeSelect">
+        <option value="last_30_days">Last 30 days</option>
+        <option value="last_7_days">Last 7 days</option>
+        <option value="this_month">This month</option>
+        <option value="custom_range">Custom range</option>
+      </select>
+      <input class="field hidden" type="date" id="dailyDateTopInput" title="Select daily report date" />
+      <input class="field date-filter" type="date" id="dateFromInput" />
+      <input class="field date-filter" type="date" id="dateToInput" />
+      <button class="btn ghost hidden" id="applyRangeBtn" type="button">Apply</button>
+      <button class="btn primary" id="refreshUsageBtn" type="button">Refresh Usage</button>
+      <div class="top-env-summary">
+        <div class="small-label">Selected Environment</div>
+        <div class="line">Environment: <code id="topEnvName">Sandbox</code></div>
+        <div class="line">Base URL: <code id="topBaseUrl">https://sandboxapi.logiklu.com</code></div>
+        <div class="line">Timezone: <code id="topTimezone">Asia/Calcutta</code></div>
+      </div>
+    </div>
+  </header>
+
+  <section class="pulse-strip">
+    <div class="pulse-live"><span class="dot-live"></span><span id="liveLabel">SANDBOX LIVE</span></div>
+    <svg class="pulse-svg" viewBox="0 0 720 34" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="0,20 20,20 30,8 40,26 55,20 70,20 90,4 100,30 115,20 140,20 155,12 165,22 180,20 205,20 220,6 232,28 248,20 270,20 285,16 300,20 320,20 335,2 348,32 365,20 390,20 405,10 418,24 432,20 455,20 470,7 483,27 498,20 520,20 535,14 550,20 570,20 588,4 600,30 615,20 640,20 655,9 668,25 682,20 705,20 720,20" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" opacity=".88"/>
+    </svg>
+    <div class="pulse-figures">
+      <div><b class="mono" id="reqRate">34/min</b><span>REQ RATE</span></div>
+      <div><b class="mono" id="p50Latency">118ms</b><span>P50 LATENCY</span></div>
+      <div><b class="mono" id="uptime">99.94%</b><span>UPTIME</span></div>
+    </div>
+  </section>
+
+  <section class="content">
+    <!-- Dashboard -->
+    <div class="view active" id="view-dashboard">
+      <div class="section-head">
+        <div>
+          <h2>Dashboard Overview</h2>
+          <p>Overall API consumption and health summary for the selected environment.</p>
+        </div>
+        <div class="filters">
+          <select class="select" id="endpointFilterSelect"><option value="">All Endpoints</option></select>
+          <select class="select"><option>Group by Day</option><option>Group by Hour</option><option>Group by Endpoint</option></select>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Total Calls</span><span class="kpi-icon accent">⚡</span></div><div class="kpi-value mono" data-bind="totalCalls">36,245</div><div class="kpi-delta up" data-bind="growth">▲ 12.4% from previous period</div></div>
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Success Rate</span><span class="kpi-icon success">✓</span></div><div class="kpi-value mono" data-bind="successRate">98.7%</div><div class="kpi-delta up">Healthy response ratio</div></div>
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Avg Response</span><span class="kpi-icon warn">⏱</span></div><div class="kpi-value mono" data-bind="avgResponse">186ms</div><div class="kpi-delta warn-text">Watch latency above 300ms</div></div>
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Error Calls</span><span class="kpi-icon error">!</span></div><div class="kpi-value mono" data-bind="errorCalls">471</div><div class="kpi-delta down" data-bind="errorRate">1.3% of total calls</div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head">
+            <div><div class="panel-title">API Calls Trend Graph</div><div class="panel-sub">Daily call volume with failed request overlay.</div></div>
+            <div class="legend"><span class="legend-item"><i class="legend-dot" style="background:var(--accent)"></i>Successful</span><span class="legend-item"><i class="legend-dot" style="background:var(--error)"></i>Failed</span></div>
+          </div>
+          <div class="chart-wrap"><svg id="trendSvg" viewBox="0 0 720 250" preserveAspectRatio="none"></svg></div>
+          <div class="chart-axis-labels"><span>Day 1</span><span>Day 7</span><span>Day 14</span><span>Day 21</span><span>Day 30</span></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div><div class="panel-title">Total Error Call Summary</div><div class="panel-sub">Split by status class and top failure reason.</div></div></div>
+          <div class="error-summary-grid" id="errorSummaryGrid"></div>
+          <div class="status-list">
+            <div class="status-row"><span class="status-code" style="color:var(--success)">2xx</span><div class="status-bar-bg"><div class="status-bar-fill" id="status2xx" style="background:var(--success)"></div></div><span class="status-pct" id="status2xxText">98.7%</span></div>
+            <div class="status-row"><span class="status-code" style="color:var(--warn)">4xx</span><div class="status-bar-bg"><div class="status-bar-fill" id="status4xx" style="background:var(--warn)"></div></div><span class="status-pct" id="status4xxText">1.1%</span></div>
+            <div class="status-row"><span class="status-code" style="color:var(--error)">5xx</span><div class="status-bar-bg"><div class="status-bar-fill" id="status5xx" style="background:var(--error)"></div></div><span class="status-pct" id="status5xxText">0.2%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head"><div><div class="panel-title">Monthly Quota Usage</div><div class="panel-sub">Use this section to warn users before they cross usage limits.</div></div><strong class="mono" id="quotaRatio">36,245 / 50,000</strong></div>
+          <div class="usage-meter"><div class="meter-head"><span>Used</span><span id="quotaPct">72%</span></div><div class="meter-track"><div class="meter-fill" id="quotaBar" style="width:72%"></div></div><div class="quota-marks"><span>70% soft warning</span><span>90% high warning</span><span>100% limit</span></div></div>
+          <div class="callout-grid">
+            <div class="callout"><strong>Projected month-end usage</strong><p><span class="mono" id="projectedUsage">48,900 calls</span> based on the current consumption pattern.</p></div>
+            <div class="callout"><strong>Suggested action</strong><p id="quotaSuggestion">Show a soft warning and encourage users to optimize repeated calls.</p></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div><div class="panel-title">Top Endpoints</div><div class="panel-sub">Most used API routes for this environment.</div></div></div>
+          <div class="endpoint-list" id="dashboardEndpoints"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><div><div class="panel-title">Selected Environment Details</div><div class="panel-sub">Base URL and usage configuration for the selected environment.</div></div></div>
+        <div class="mini-stat"><span>Base URL</span><span class="mono" id="baseUrl">https://sandboxapi.logiklu.com</span></div>
+        <div class="mini-stat"><span>Environment</span><span id="envNameInline">Sandbox</span></div>
+        <div class="mini-stat"><span>Rate Limit</span><span class="mono" id="rateLimitInline">Not Set</span></div>
+        <div class="mini-stat"><span>Last Successful Call</span><span id="lastSuccessInline">No successful call</span></div>
+      </div>
+    </div>
+
+    <!-- Daily -->
+    <div class="view" id="view-daily">
+      <div class="section-head">
+        <div><h2>Daily Usage Report</h2><p id="dailyReportSub">Today's hour-by-hour API calls, errors, success rate, and average response time.</p></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div><div class="panel-title" id="dailyGraphTitle">Today, Hour by Hour Graph</div><div class="panel-sub">Successful and failed requests for the selected day.</div></div><div class="legend"><span class="legend-item"><i class="legend-dot" style="background:var(--accent)"></i>Successful</span><span class="legend-item"><i class="legend-dot" style="background:var(--error)"></i>Failed</span></div></div>
+        <div class="bars" id="dailyBars"></div>
+      </div>
+      <div class="report-grid">
+        <div class="report-card"><h3 id="dailyCardTitle">Today</h3><div class="mini-stat"><span>Total Calls</span><span id="dailyTotal">3,842</span></div><div class="mini-stat"><span>Success</span><span id="dailySuccess">3,791</span></div><div class="mini-stat"><span>Errors</span><span id="dailyErrors">51</span></div></div>
+        <div class="report-card"><h3>Peak Hour</h3><div class="mini-stat"><span>Time</span><span id="peakTime">11:00 - 12:00</span></div><div class="mini-stat"><span>Calls</span><span id="peakCalls">642</span></div><div class="mini-stat"><span>Avg Response</span><span id="peakResponse">192ms</span></div></div>
+        <div class="report-card"><h3>Health</h3><div class="mini-stat"><span>Success Rate</span><span id="dailySuccessRate">98.6%</span></div><div class="mini-stat"><span>4xx Errors</span><span id="daily4xx">44</span></div><div class="mini-stat"><span>5xx Errors</span><span id="daily5xx">7</span></div></div>
+        <div class="report-card"><h3>Quota Today</h3><div class="mini-stat"><span>Daily Share</span><span id="dailyQuotaShare">7.68%</span></div><div class="mini-stat"><span>Rate Limit Hits</span><span id="dailyRateHits">16</span></div><div class="mini-stat"><span>Slow Calls</span><span id="dailySlowCalls">42</span></div></div>
+      </div>
+      <div class="table-card"><div class="table-responsive"><table><thead><tr><th>Date</th><th>Total Calls</th><th>Success</th><th>4xx</th><th>5xx</th><th>Avg Response</th><th>Quota Used</th></tr></thead><tbody id="dailyTable"></tbody></table></div></div>
+    </div>
+
+    <!-- Weekly -->
+    <div class="view" id="view-weekly">
+      <div class="section-head"><div><h2>Weekly Usage Report</h2><p>Compare weekly volume, growth, error ratio, endpoint consumption, and last-week baseline.</p></div><div class="filters"><select class="select"><option>This Week</option><option>Last Week</option><option>Last 4 Weeks</option></select><select class="select"><option>Selected Environment</option><option>All Environments</option></select></div></div>
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Weekly Calls</span><span class="kpi-icon accent">☎</span></div><div class="kpi-value mono" id="weeklyCalls">27,152</div><div class="kpi-delta up" id="weeklyGrowth">▲ 8.2%</div></div>
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Avg Daily Calls</span><span class="kpi-icon info">📊</span></div><div class="kpi-value mono" id="weeklyAvg">3,879</div><div class="kpi-delta flat">Across 7 days</div></div>
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Error Rate</span><span class="kpi-icon error">🧯</span></div><div class="kpi-value mono" id="weeklyErrorRate">1.4%</div><div class="kpi-delta down">Needs monitoring</div></div>
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Top Endpoint</span><span class="kpi-icon warn">🏆</span></div><div class="kpi-value mono" id="weeklyTopEndpoint">/accounts</div><div class="kpi-delta flat" id="weeklyTopShare">40.8% usage</div></div>
+      </div>
+      <div class="table-card"><div class="table-responsive"><table><thead><tr><th>Week</th><th>Period</th><th>Total Calls</th><th>Success Rate</th><th>Errors</th><th>Avg Response</th><th>Growth</th></tr></thead><tbody id="weeklyTable"></tbody></table></div></div>
+      <div class="panel">
+        <div class="panel-head"><div><div class="panel-title">This Week vs Last Week Graph</div><div class="panel-sub">Side-by-side daily comparison.</div></div><div class="legend"><span class="legend-item"><i class="legend-dot" style="background:var(--surface-4)"></i>Last week</span><span class="legend-item"><i class="legend-dot" style="background:var(--accent)"></i>This week</span></div></div>
+        <div class="bars" id="weeklyBars"></div>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Weekly Total</span></div><div class="kpi-value mono" id="weeklyTotal2">27,152</div><div class="kpi-delta up" id="weeklyTotalNote">▲ 8.2% vs last week</div></div>
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Busiest Day</span></div><div class="kpi-value" id="busiestDay">Thursday</div><div class="kpi-delta flat" id="busiestDayCalls">5,912 calls</div></div>
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Quietest Day</span></div><div class="kpi-value" id="quietestDay">Sunday</div><div class="kpi-delta flat" id="quietestDayCalls">2,921 calls</div></div>
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Weekly Error Calls</span></div><div class="kpi-value mono" id="weeklyErrorCalls">380</div><div class="kpi-delta down">4xx + 5xx combined</div></div>
+      </div>
+    </div>
+
+    <!-- Monthly -->
+    <div class="view" id="view-monthly">
+      <div class="section-head"><div><h2>Monthly Usage Report</h2><p>Month-wise usage summary with quota tracking, endpoint share, calendar heatmap, and billing-level insight.</p></div><div class="filters"><select class="select"><option>July 2026</option><option>June 2026</option><option>May 2026</option></select><button class="btn primary">Export CSV</button></div></div>
+      <div class="grid-2">
+        <div class="panel"><div class="panel-head"><div><div class="panel-title">Monthly Consumption</div><div class="panel-sub">Current month API usage against limit.</div></div><strong class="mono" id="monthlyConsumptionPct">72%</strong></div><div class="usage-meter"><div class="meter-head"><span>July Usage</span><span id="monthlyConsumptionText">36,245 / 50,000</span></div><div class="meter-track"><div class="meter-fill" id="monthlyConsumptionBar" style="width:72%"></div></div></div><div class="mini-stat"><span>Projected month-end usage</span><span id="monthlyProjected">48,900 calls</span></div><div class="mini-stat"><span>Remaining calls</span><span id="monthlyRemaining">13,755 calls</span></div><div class="mini-stat"><span>Estimated exhaustion date</span><span id="monthlyExhaustion">29 Jul 2026</span></div></div>
+        <div class="panel"><div class="panel-head"><div><div class="panel-title">Endpoint Share</div><div class="panel-sub">Call distribution by endpoint.</div></div></div><div class="endpoint-list" id="monthlyEndpointShare"></div></div>
+      </div>
+      <div class="panel"><div class="panel-head"><div><div class="panel-title">Monthly Calendar Heatmap</div><div class="panel-sub">Darker cells mark higher daily API volume.</div></div><select class="select"><option>July 2026</option><option>June 2026</option></select></div><div class="cal-grid" id="calGrid"></div></div>
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Calls This Month</span></div><div class="kpi-value mono" id="monthCalls">36,245</div><div class="kpi-delta up" id="monthVsLast">▲ 22% vs June pace</div></div>
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Monthly Quota</span></div><div class="kpi-value mono" id="monthQuota">50K</div><div class="kpi-delta flat">Plan limit</div></div>
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Unique Keys Used</span></div><div class="kpi-value mono" id="monthKeys">3</div><div class="kpi-delta flat">For selected environment</div></div>
+        <div class="kpi-card"><div class="kpi-top"><span class="kpi-label">Projected Month End</span></div><div class="kpi-value mono" id="monthProjectedEnd">48.9K</div><div class="kpi-delta warn-text" id="monthProjectedNote">Near plan ceiling</div></div>
+      </div>
+      <div class="table-card"><div class="table-responsive"><table><thead><tr><th>Month</th><th>Total Calls</th><th>Success</th><th>Errors</th><th>Success Rate</th><th>Avg Response</th><th>Quota Usage</th></tr></thead><tbody id="monthlyTable"></tbody></table></div></div>
+    </div>
+
+    <!-- Detailed calls -->
+    <div class="view" id="view-calls">
+      <div class="section-head"><div><h2>Detailed API Calls</h2><p>Request-level log for auditing, debugging, IP checks, status code analysis, and performance review.</p></div></div>
+      <div class="panel">
+        <div class="filter-bar"><input class="search-input" type="text" placeholder="Search by endpoint, request ID, IP, API key, or error code…"><select class="select"><option>All methods</option><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select><select class="select"><option>All statuses</option><option>2xx Success</option><option>4xx Client error</option><option>5xx Server error</option></select><select class="select"><option>Last 24 hours</option><option>Last 7 days</option><option>Last 30 days</option></select></div>
+        <div class="table-responsive"><table><thead><tr><th>Timestamp</th><th>Request ID</th><th>Method</th><th>Endpoint</th><th>Status</th><th>Response</th><th>IP Address</th><th>API Key</th><th>Error Code</th></tr></thead><tbody id="callsBody"></tbody></table></div>
+        <div class="table-foot"><div id="callsFoot">Showing 1–10 of 36,245 calls</div><div class="page-controls"><button class="page-btn active">1</button><button class="page-btn">2</button><button class="page-btn">3</button><button class="page-btn">…</button><button class="page-btn">124</button></div></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal-backdrop" id="errorModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="errorModalTitle">Error Calls</div>
+        <div class="modal-sub" id="errorModalSub">Recent error calls for selected status code.</div>
+      </div>
+      <button class="modal-close" id="errorModalClose" type="button">Close</button>
+    </div>
+    <div class="modal-body" id="errorModalBody"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var envs = __USAGE_DATA__;
+  var serverTimezone = '__TIMEZONE__' || 'Asia/Calcutta';
+  var serverTimezoneOffset = Number('__TIMEZONE_OFFSET__' || 330);
+
+  function detectBrowserTimezone(){
+    try{
+      var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return tz || 'Asia/Calcutta';
+    }catch(e){
+      return 'Asia/Calcutta';
+    }
+  }
+
+  function detectBrowserTimezoneOffset(){
+    try{
+      var offset = -new Date().getTimezoneOffset();
+      if(isNaN(offset)){return 330;}
+      return offset;
+    }catch(e){
+      return 330;
+    }
+  }
+
+  var browserTimezone = detectBrowserTimezone();
+  var browserTimezoneOffset = detectBrowserTimezoneOffset();
+  var activeTimezone = serverTimezone || browserTimezone || 'Asia/Calcutta';
+  var activeTimezoneOffset = isNaN(serverTimezoneOffset) ? browserTimezoneOffset : serverTimezoneOffset;
+
+  var currentEnv = '__SELECTED_ENV__';
+  var titles = {
+    dashboard:['Dashboard','Monitor usage, quota, errors, trends, and request-level logs across all environments.'],
+    daily:['Daily report','Hour-by-hour breakdown and daily report table for the selected environment.'],
+    weekly:['Weekly report','Weekly summary, comparison graph, and week-wise report table.'],
+    monthly:['Monthly report','Quota tracking, endpoint share, calendar heatmap, and monthly summary.'],
+    calls:['Detailed calls','Search and inspect individual API request logs.']
+  };
+
+  function qs(sel){return document.querySelector(sel);} function qsa(sel){return Array.prototype.slice.call(document.querySelectorAll(sel));}
+  function num(x){return Number(String(x).replace(/[^0-9.]/g,''));}
+  function fmt(n){return Number(n).toLocaleString('en-IN');}
+  function todayInputDate(){var d=new Date(); var y=d.getFullYear(); var m=String(d.getMonth()+1).padStart(2,'0'); var day=String(d.getDate()).padStart(2,'0'); return y+'-'+m+'-'+day;}
+  function pct(used,quota){quota=Number(quota||0); if(!quota || quota<=0){return 0;} return Math.round((used/quota)*100);}
+  function methodClass(method){return method.toLowerCase();}
+  function codeClass(code){code=String(code); if(code.indexOf('2')===0)return 'code-2xx'; if(code.indexOf('4')===0)return 'code-4xx'; return 'code-5xx';}
+  function bind(name,value){qsa('[data-bind="'+name+'"]').forEach(function(el){el.textContent=value;});}
+
+  function drawTrend(data){
+    var svg=qs('#trendSvg'), max=Math.max.apply(null,data.trend), min=Math.min.apply(null,data.trend), width=720, height=250, pad=16;
+    var points=data.trend.map(function(v,i){var x=i*(width/(data.trend.length-1)); var y=height-pad-((v-min)/(max-min||1))*(height-48); return [x,y];});
+    var failMax=Math.max.apply(null,data.fail);
+    var fail=data.fail.map(function(v,i){var x=i*(width/(data.fail.length-1)); var y=height-pad-(v/(failMax||1))*44; return [x,y];});
+    var grid=''; for(var g=0;g<5;g++){var y=g*(height/4);grid+='<line x1="0" y1="'+y+'" x2="720" y2="'+y+'" stroke="var(--border-soft)" />';}
+    var line=points.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' ');
+    var failLine=fail.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' ');
+    var area='0,'+height+' '+line+' '+width+','+height;
+    svg.innerHTML='<defs><linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--accent)" stop-opacity="0.36"/><stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>'+grid+'<polygon points="'+area+'" fill="url(#trendGrad)"/><polyline points="'+line+'" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><polyline points="'+failLine+'" fill="none" stroke="var(--error)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>';
+  }
+
+  function hourLabel12(i){
+    if(i===0)return '12 AM';
+    if(i<12)return i+' AM';
+    if(i===12)return '12 PM';
+    return (i-12)+' PM';
+  }
+
+  function drawDailyBars(data){
+    var el=qs('#dailyBars');
+    if(!el)return;
+    el.innerHTML='';
+
+    var successValues=(data.daily && data.daily.length)?data.daily:[];
+    var failedValues=(data.dailyFail && data.dailyFail.length)?data.dailyFail:[];
+    var labels=(data.dailyHourLabels && data.dailyHourLabels.length)?data.dailyHourLabels:successValues.map(function(_,i){return hourLabel12(i);});
+
+    var totals=[];
+    for(var i=0;i<24;i++){
+      var success=Number(successValues[i] || 0);
+      var failed=Number(failedValues[i] || 0);
+      totals.push(success + failed);
+    }
+
+    var max=Math.max.apply(null,totals.concat([0]));
+
+    totals.forEach(function(total,i){
+      var success=Number(successValues[i] || 0);
+      var failed=Number(failedValues[i] || 0);
+      var h=max ? Math.max(18,Math.round((total/max)*100)) : 8;
+      var failedPct=total ? Math.min(100,Math.round((failed/total)*100)) : 0;
+      var successPct=total ? Math.max(0,100-failedPct) : 100;
+      var displayValue=total>=1000?(total/1000).toFixed(1)+'K':total;
+      var col=document.createElement('div');
+      col.className='bar-col';
+      col.title=(labels[i] || hourLabel12(i))+' · Success: '+success+' · Failed: '+failed;
+      col.innerHTML='<span class="bar-val">'+displayValue+'</span><div class="bar-stack" style="height:'+h+'%"><div class="bar-fill err" style="height:'+failedPct+'%"></div><div class="bar-fill" style="height:'+successPct+'%"></div></div><span class="bar-label">'+(labels[i] || hourLabel12(i))+'</span>';
+      el.appendChild(col);
+    });
+  }
+
+  function drawWeeklyBars(data){
+    var el=qs('#weeklyBars'); el.innerHTML=''; var days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun']; var max=Math.max.apply(null,data.weeklyThis.concat(data.weeklyPrev));
+    days.forEach(function(d,i){var wrap=document.createElement('div'); wrap.className='week-compare-col';
+      var prevH=Math.max(14,Math.round((data.weeklyPrev[i]/max)*100)); var thisH=Math.max(14,Math.round((data.weeklyThis[i]/max)*100));
+      wrap.innerHTML='<div class="bar-col"><span class="bar-val">'+shortNum(data.weeklyPrev[i])+'</span><div class="bar-stack" style="height:'+prevH+'%"><div class="bar-fill prev" style="height:100%"></div></div></div><div class="bar-col"><span class="bar-val">'+shortNum(data.weeklyThis[i])+'</span><div class="bar-stack" style="height:'+thisH+'%"><div class="bar-fill" style="height:100%"></div></div></div><span class="week-label">'+d+'</span>'; el.appendChild(wrap);
+    });
+  }
+
+  function shortNum(v){return v>=1000000?(v/1000000).toFixed(1)+'M':v>=1000?(v/1000).toFixed(v>=10000?0:1)+'K':v;}
+
+  function drawCalendar(data){
+    var el=qs('#calGrid'); el.innerHTML=''; ['S','M','T','W','T','F','S'].forEach(function(d){var div=document.createElement('div'); div.className='cal-dow'; div.textContent=d; el.appendChild(div);});
+    for(var i=0;i<3;i++){var empty=document.createElement('div'); empty.className='cal-cell empty'; el.appendChild(empty);}
+    var max=data.used/18; for(var d=1;d<=31;d++){var val=Math.round((data.used/31)*(0.66+(((d*7)%13)/18))); var intensity=Math.min(val/max,1); var cell=document.createElement('div'); cell.className='cal-cell'; cell.style.background='rgba(94,234,212,'+(0.045+intensity*0.31).toFixed(3)+')'; cell.style.borderColor=d===4?'var(--accent-line)':'var(--border-soft)'; cell.innerHTML='<span class="d">'+d+'</span><span class="v">'+shortNum(val)+'</span>'; el.appendChild(cell);}
+  }
+
+  function fillEndpoints(id,data){
+    var el=qs(id); if(!el)return; el.innerHTML='';
+    (data.endpoints || []).forEach(function(row){
+      var item=document.createElement('div'); item.className='endpoint-item';
+      item.innerHTML='<div><div class="endpoint-path">'+row[0]+'</div><div class="endpoint-sub">'+row[1]+' · '+row[3]+'</div></div><div class="endpoint-count">'+row[2]+'</div>';
+      el.appendChild(item);
+    });
+    if(!(data.endpoints || []).length){el.innerHTML='<div class="endpoint-item"><div><div class="endpoint-path">No endpoint usage found</div><div class="endpoint-sub">No protected API calls found for this period.</div></div><div class="endpoint-count">0</div></div>';}
+  }
+
+  function populateEndpointSelects(data){
+    var endpoints=(data.endpointOptions || []).slice();
+    ['#endpointFilterSelect','#dailyEndpointFilterSelect'].forEach(function(selector){
+      var sel=qs(selector); if(!sel)return;
+      var current=sel.value;
+      sel.innerHTML='<option value="">All Endpoints</option>';
+      endpoints.forEach(function(path){var opt=document.createElement('option'); opt.value=path; opt.textContent=path; sel.appendChild(opt);});
+      if(current && endpoints.indexOf(current)>=0){sel.value=current;}
+    });
+  }
+
+  function renderErrorBuckets(data){
+    var grid=qs('#errorSummaryGrid'); if(!grid)return; grid.innerHTML='';
+    var buckets=data.errorBuckets || [];
+    if(!buckets.length){
+      grid.innerHTML='<div class="error-mini disabled"><div class="label">No Errors</div><div class="num flat">0</div><div class="hint">No error calls found</div></div>';
+      return;
+    }
+    buckets.forEach(function(b,idx){
+      var box=document.createElement('div');
+      var code=String(b.status || '');
+      var klass=code.charAt(0)==='5'?'down':'warn-text';
+      box.className='error-mini';
+      box.setAttribute('data-error-index',idx);
+      box.innerHTML='<div class="label">HTTP '+code+'</div><div class="num '+klass+'">'+(b.count || '0')+'</div><div class="hint">'+(b.top_error || 'UNKNOWN')+'</div>';
+      box.addEventListener('click',function(){openErrorModal(idx);});
+      grid.appendChild(box);
+    });
+  }
+
+  function openErrorModal(index){
+    var d=envs[currentEnv] || {}; var bucket=(d.errorBuckets || [])[index]; if(!bucket)return;
+    qs('#errorModalTitle').textContent='HTTP '+bucket.status+' Error Calls';
+    qs('#errorModalSub').textContent=(bucket.count || '0')+' calls · Top reason: '+(bucket.top_error || 'UNKNOWN');
+    var rows=bucket.calls || [];
+    if(!rows.length){qs('#errorModalBody').innerHTML='<div class="modal-empty">No recent calls found for this status code.</div>';}
+    else{
+      var html='<div class="table-responsive"><table><thead><tr><th>Timestamp</th><th>Request ID</th><th>Method</th><th>Endpoint</th><th>Status</th><th>Response</th><th>IP Address</th><th>API Key</th><th>Error Code</th></tr></thead><tbody>';
+      rows.forEach(function(r){var method=r[2], code=r[4]; html+='<tr><td class="mono">'+r[0]+'</td><td class="mono">'+r[1]+'</td><td><span class="method '+methodClass(method)+'">'+method+'</span></td><td><code>'+r[3]+'</code></td><td><span class="code-pill '+codeClass(code)+'">'+code+'</span></td><td class="mono">'+r[5]+'</td><td>'+r[6]+'</td><td><code>'+r[7]+'</code></td><td>'+(r[8]==='-'?'-':'<span class="down">'+r[8]+'</span>')+'</td></tr>';});
+      html+='</tbody></table></div>'; qs('#errorModalBody').innerHTML=html;
+    }
+    qs('#errorModal').classList.add('active');
+  }
+
+  function closeErrorModal(){var modal=qs('#errorModal'); if(modal)modal.classList.remove('active');}
+
+  function fillTable(id, rows, type){
+    var el=qs(id); el.innerHTML=''; rows.forEach(function(r){var tr=document.createElement('tr');
+      if(type==='weekly'){tr.innerHTML='<td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td><td>'+r[3]+'</td><td>'+r[4]+'</td><td>'+r[5]+'</td><td><span class="'+(r[6].charAt(0)==='+'?'up':'down')+'">'+r[6]+'</span></td>';}
+      else {tr.innerHTML=r.map(function(c){return '<td>'+c+'</td>';}).join('');}
+      el.appendChild(tr);});
+  }
+
+  function fillCalls(data){
+    var el=qs('#callsBody'); el.innerHTML=''; data.calls.forEach(function(r){var method=r[2], code=r[4]; var tr=document.createElement('tr'); tr.innerHTML='<td class="mono">'+r[0]+'</td><td class="mono">'+r[1]+'</td><td><span class="method '+methodClass(method)+'">'+method+'</span></td><td><code>'+r[3]+'</code></td><td><span class="code-pill '+codeClass(code)+'">'+code+'</span></td><td class="mono">'+r[5]+'</td><td>'+r[6]+'</td><td><code>'+r[7]+'</code></td><td>'+(r[8]==='-'?'-':'<span class="down">'+r[8]+'</span>')+'</td>'; el.appendChild(tr);});
+    qs('#callsFoot').textContent='Showing 1–'+data.calls.length+' of '+data.totalCalls+' calls';
+  }
+
+  function updateEnv(env){
+    if(!envs[env]){env=Object.keys(envs)[0] || 'sandbox';}
+    currentEnv=env; var d=envs[env]; var q=pct(d.used,d.quota); var hasQuota=Number(d.quota||0)>0; var remaining=hasQuota?(d.quota-d.used):0;
+    var envSel=qs('#envSelect'); if(envSel)envSel.value=env;
+    qs('#sideEnvName').textContent=d.label; qs('#sideEnvUrl').textContent=d.url; qs('#sideQuotaBar').style.width=Math.min(q,100)+'%'; qs('#sideEnvNote').textContent=hasQuota?(fmt(d.used)+' / '+fmt(d.quota)+' calls used this month.'):(fmt(d.used)+' calls used this month. No monthly quota set.');
+    qs('#liveLabel').textContent=d.status; qs('#reqRate').textContent=d.reqRate; qs('#p50Latency').textContent=d.p50; qs('#uptime').textContent=d.uptime;
+    bind('totalCalls',d.totalCalls); bind('successRate',d.successRate); bind('avgResponse',d.avgResponse); bind('errorCalls',d.errorCalls); bind('errorRate',d.errorRate); bind('growth',d.growth); bind('errors4xx',d.errors4xx); bind('errors5xx',d.errors5xx); bind('topError',d.topError); bind('topErrorText',d.topErrorText); bind('errorPercent',d.errorPercent);
+    qs('#status2xx').style.width=parseFloat(d.successRate)+'%'; qs('#status2xxText').textContent=d.successRate; var four=d.used?(num(d.errors4xx)/d.used*100):0; var five=d.used?(num(d.errors5xx)/d.used*100):0; qs('#status4xx').style.width=Math.max(four,0.5)+'%'; qs('#status4xxText').textContent=four.toFixed(1)+'%'; qs('#status5xx').style.width=Math.max(five,0.5)+'%'; qs('#status5xxText').textContent=five.toFixed(1)+'%';
+    qs('#quotaRatio').textContent=hasQuota?(fmt(d.used)+' / '+fmt(d.quota)):(fmt(d.used)+' / Not Set'); qs('#quotaPct').textContent=hasQuota?(q+'%'):'Not Set'; qs('#quotaBar').style.width=Math.min(q,100)+'%'; qs('#projectedUsage').textContent=d.projected; qs('#quotaSuggestion').textContent=d.suggestion;
+    qs('#baseUrl').textContent=d.url; qs('#envNameInline').textContent=d.label; qs('#rateLimitInline').textContent=d.rateLimit; qs('#lastSuccessInline').textContent=d.lastSuccess;
+    qs('#topEnvName').textContent=d.label; qs('#topBaseUrl').textContent=d.url; if(qs('#topTimezone'))qs('#topTimezone').textContent=(d.timezone || activeTimezone || 'Asia/Calcutta');
+    if(qs('#dailyDateTopInput') && d.dailyDate){qs('#dailyDateTopInput').value=d.dailyDate;}
+    if(qs('#dailyGraphTitle'))qs('#dailyGraphTitle').textContent=d.dailyGraphTitle || ((d.dailyDateLabel || 'Today') + ', Hour by Hour Graph');
+    if(qs('#dailyCardTitle'))qs('#dailyCardTitle').textContent=d.dailyCardTitle || d.dailyDateLabel || 'Today';
+    if(qs('#dailyReportSub'))qs('#dailyReportSub').textContent=(d.dailyDateLabel || 'Today') + ' API calls, errors, success rate, and average response time.';
+    populateEndpointSelects(d); renderErrorBuckets(d);
+    drawTrend(d); drawDailyBars(d); drawWeeklyBars(d); drawCalendar(d); fillEndpoints('#dashboardEndpoints',d); fillEndpoints('#monthlyEndpointShare',d); fillTable('#dailyTable',d.dailyRows); fillTable('#weeklyTable',d.weeklyRows,'weekly'); fillTable('#monthlyTable',d.monthPast); fillCalls(d);
+    var today=d.dailyRows[0] || ['-', '0', '0', '0', '0', '0ms', 'Not Set']; var dayTotal=num(today[1]); var daySuccess=num(today[2]); var daySuccessRate=dayTotal?((daySuccess/dayTotal)*100).toFixed(1)+'%':'0.0%'; qs('#dailyTotal').textContent=today[1]; qs('#dailySuccess').textContent=today[2]; qs('#dailyErrors').textContent=fmt(num(today[3])+num(today[4])); qs('#dailySuccessRate').textContent=daySuccessRate; qs('#daily4xx').textContent=today[3]; qs('#daily5xx').textContent=today[4]; qs('#dailyQuotaShare').textContent=today[6]; qs('#dailyRateHits').textContent=d.rateLimitHits || '0'; qs('#dailySlowCalls').textContent=d.slowCalls || '0'; qs('#peakCalls').textContent=d.peakCallsValue || fmt(Math.max.apply(null,d.daily)); qs('#peakResponse').textContent=d.peakResponseValue || d.avgResponse; qs('#peakTime').textContent=d.peakTime || 'Not available';
+    var weeklyTotalNum=num(d.weeklyRows[0][2]); var weeklyErrorsNum=num(d.weeklyRows[0][4]); var firstEndpoint=(d.endpoints && d.endpoints.length)?d.endpoints[0]:['-','-','0','0.0%'];
+    qs('#weeklyCalls').textContent=d.weeklyRows[0][2]; qs('#weeklyAvg').textContent=fmt(Math.round(weeklyTotalNum/7)); qs('#weeklyErrorRate').textContent=weeklyTotalNum?((weeklyErrorsNum/weeklyTotalNum)*100).toFixed(1)+'%':'0.0%'; qs('#weeklyTopEndpoint').textContent=firstEndpoint[0].replace('GET ',''); qs('#weeklyTopShare').textContent=firstEndpoint[3]+' usage'; qs('#weeklyTotal2').textContent=d.weeklyRows[0][2]; qs('#weeklyTotalNote').textContent='▲ '+d.weeklyRows[0][6].replace('+','')+' vs last week'; qs('#weeklyErrorCalls').textContent=d.weeklyRows[0][4];
+    var days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']; var maxIdx=0,minIdx=0; d.weeklyThis.forEach(function(v,i){if(v>d.weeklyThis[maxIdx])maxIdx=i;if(v<d.weeklyThis[minIdx])minIdx=i;}); qs('#busiestDay').textContent=days[maxIdx]; qs('#busiestDayCalls').textContent=fmt(d.weeklyThis[maxIdx])+' calls'; qs('#quietestDay').textContent=days[minIdx]; qs('#quietestDayCalls').textContent=fmt(d.weeklyThis[minIdx])+' calls';
+    qs('#monthlyConsumptionPct').textContent=hasQuota?(q+'%'):'Not Set'; qs('#monthlyConsumptionText').textContent=hasQuota?(fmt(d.used)+' / '+fmt(d.quota)):(fmt(d.used)+' / Not Set'); qs('#monthlyConsumptionBar').style.width=Math.min(q,100)+'%'; qs('#monthlyProjected').textContent=d.projected; qs('#monthlyRemaining').textContent=hasQuota?(fmt(remaining)+' calls'):'Not applicable'; qs('#monthlyExhaustion').textContent=!hasQuota?'Not applicable':(q>80?'25 Jul 2026':q>65?'29 Jul 2026':'Not expected this month'); qs('#monthCalls').textContent=d.totalCalls; qs('#monthQuota').textContent=hasQuota?shortNum(d.quota):'Not Set'; qs('#monthKeys').textContent=d.keys; qs('#monthProjectedEnd').textContent=hasQuota?shortNum(num(d.projected)):'Not available'; qs('#monthProjectedNote').textContent=!hasQuota?'Quota not configured':(q>80?'Above alert level':'Within safe range');
+  }
+
+  qsa('.nav-item').forEach(function(btn){btn.addEventListener('click',function(){var view=btn.dataset.view;qsa('.nav-item').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');qsa('.view').forEach(function(v){v.classList.remove('active');});qs('#view-'+view).classList.add('active');qs('#pageTitle').textContent=titles[view][0];qs('#pageSub').textContent=titles[view][1];setTopFilterVisibility(view);});});
+
+  function buildDataUrl(params){
+    var basePath=window.location.pathname.replace(/\/$/,'');
+    var url=new URL(basePath + '/data', window.location.origin);
+    Object.keys(params || {}).forEach(function(key){
+      var value=params[key];
+      if(value!==undefined && value!==null && value!==''){url.searchParams.set(key,value);}
+    });
+    return url;
+  }
+
+  function buildPageUrl(params){
+    var url=new URL(window.location.href);
+    ['environment','range','date_from','date_to','daily_date','timezone','timezone_offset'].forEach(function(key){url.searchParams.delete(key);});
+    Object.keys(params || {}).forEach(function(key){
+      var value=params[key];
+      if(value!==undefined && value!==null && value!==''){url.searchParams.set(key,value);}
+    });
+    return url;
+  }
+
+  function setLoading(isLoading){
+    var refresh=qs('#refreshUsageBtn');
+    if(refresh){
+      refresh.disabled=!!isLoading;
+      refresh.textContent=isLoading ? 'Loading...' : 'Refresh Usage';
+    }
+  }
+
+
+  function activeViewName(){
+    var active=document.querySelector('.view.active');
+    return active ? active.id.replace('view-','') : 'dashboard';
+  }
+
+  function setTopFilterVisibility(view){
+    view = view || activeViewName();
+    var rangeSel=qs('#rangeSelect');
+    var from=qs('#dateFromInput');
+    var to=qs('#dateToInput');
+    var apply=qs('#applyRangeBtn');
+    var dailyDate=qs('#dailyDateTopInput');
+    var showRange=(view==='dashboard' || view==='calls');
+    if(rangeSel)rangeSel.classList.toggle('hidden',!showRange);
+    if(dailyDate)dailyDate.classList.toggle('hidden',view!=='daily');
+    if(!showRange){
+      if(from)from.classList.remove('active');
+      if(to)to.classList.remove('active');
+      if(apply)apply.classList.add('hidden');
+    }else{
+      var custom=rangeSel && rangeSel.value==='custom_range';
+      if(from)from.classList.toggle('active',custom);
+      if(to)to.classList.toggle('active',custom);
+      if(apply)apply.classList.toggle('hidden',!custom);
+    }
+  }
+
+  function collectFilterParams(){
+    var envSel=qs('#envSelect');
+    var rangeSel=qs('#rangeSelect');
+    var from=qs('#dateFromInput');
+    var to=qs('#dateToInput');
+    var dailyDate=qs('#dailyDateTopInput');
+    var view=activeViewName();
+    var params={
+      environment: envSel ? envSel.value : currentEnv,
+      timezone: browserTimezone || 'Asia/Calcutta',
+      timezone_offset: browserTimezoneOffset
+    };
+    if(view==='daily'){
+      params.range='this_month';
+      if(dailyDate && dailyDate.value){params.daily_date=dailyDate.value;}
+    }else{
+      params.range=rangeSel ? rangeSel.value : 'last_30_days';
+      if(params.range==='custom_range'){
+        if(from && from.value){params.date_from=from.value;}
+        if(to && to.value){params.date_to=to.value;}
+      }
+    }
+    return params;
+  }
+
+  function applyUsageData(payload, preferredEnv){
+    if(!payload || !payload.valid){
+      alert((payload && payload.message) ? payload.message : 'Unable to load API usage data.');
+      return;
+    }
+    envs=payload.envs || {};
+    activeTimezone = payload.timezone || browserTimezone || 'Asia/Calcutta';
+    activeTimezoneOffset = (payload.timezone_offset_minutes !== undefined && payload.timezone_offset_minutes !== null) ? Number(payload.timezone_offset_minutes) : browserTimezoneOffset;
+    var nextEnv=preferredEnv || payload.selected_environment || currentEnv || 'sandbox';
+    updateEnv(nextEnv);
+  }
+
+  function fetchUsageData(params){
+    params=params || collectFilterParams();
+    var preferredEnv=params.environment || currentEnv || 'sandbox';
+    setLoading(true);
+    return fetch(buildDataUrl(params).toString(), {
+      method:'GET',
+      headers:{'Accept':'application/json'},
+      cache:'no-store'
+    })
+    .then(function(resp){
+      if(!resp.ok){throw new Error('HTTP '+resp.status);}
+      return resp.json();
+    })
+    .then(function(payload){
+      applyUsageData(payload, preferredEnv);
+      window.history.replaceState({},'',buildPageUrl(params).toString());
+    })
+    .catch(function(err){
+      console.error(err);
+      alert('Unable to refresh API usage data. Please try again.');
+    })
+    .finally(function(){setLoading(false);});
+  }
+
+  function initFilters(){
+    var params=new URLSearchParams(window.location.search);
+    var env=params.get('environment') || currentEnv || 'sandbox';
+    var range=params.get('range') || 'last_30_days';
+    var df=params.get('date_from') || '';
+    var dt=params.get('date_to') || '';
+    var dailyParam=params.get('daily_date') || '';
+    var envSel=qs('#envSelect');
+    var rangeSel=qs('#rangeSelect');
+    var from=qs('#dateFromInput'), to=qs('#dateToInput'), apply=qs('#applyRangeBtn'), dailyDate=qs('#dailyDateTopInput');
+
+    if(envSel){envSel.value=env;}
+    if(rangeSel){rangeSel.value=range;}
+    if(from)from.value=df;
+    if(to)to.value=dt;
+    if(dailyDate)dailyDate.value=dailyParam || todayInputDate();
+
+    function toggleDate(){
+      var custom=rangeSel && rangeSel.value==='custom_range';
+      [from,to].forEach(function(el){if(el)el.classList.toggle('active',custom);});
+      if(apply)apply.classList.toggle('hidden',!custom);
+    }
+
+    toggleDate();
+    setTopFilterVisibility(activeViewName());
+
+    if(envSel){
+      envSel.addEventListener('change',function(){
+        updateEnv(envSel.value);
+        window.history.replaceState({},'',buildPageUrl(collectFilterParams()).toString());
+      });
+    }
+
+    if(rangeSel){
+      rangeSel.addEventListener('change',function(){
+        toggleDate();
+        setTopFilterVisibility(activeViewName());
+        if(rangeSel.value!=='custom_range'){
+          if(from)from.value='';
+          if(to)to.value='';
+          fetchUsageData(collectFilterParams());
+        }
+      });
+    }
+
+    if(apply){
+      apply.addEventListener('click',function(){
+        fetchUsageData(collectFilterParams());
+      });
+    }
+
+    if(dailyDate){
+      dailyDate.addEventListener('change',function(){
+        fetchUsageData(collectFilterParams());
+      });
+    }
+
+    var refresh=qs('#refreshUsageBtn');
+    if(refresh){refresh.addEventListener('click',function(){fetchUsageData(collectFilterParams());});}
+
+    var close=qs('#errorModalClose'); if(close)close.addEventListener('click',closeErrorModal);
+    var modal=qs('#errorModal'); if(modal)modal.addEventListener('click',function(e){if(e.target===modal)closeErrorModal();});
+    updateEnv(env);
+
+    // Initial server render uses Asia/Calcutta when browser timezone is unknown.
+    // After the page loads, refresh once with the actual device timezone.
+    if(String(activeTimezone || '') !== String(browserTimezone || '') || Number(activeTimezoneOffset) !== Number(browserTimezoneOffset)){
+      fetchUsageData(collectFilterParams());
+    }
+  }
+
+  initFilters();
+})();
+</script>
+</body>
+</html>
