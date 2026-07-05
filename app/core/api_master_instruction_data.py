@@ -1,8 +1,8 @@
 # Auto-generated LogiKlu API usage data with Leadforms, Roles, and Users.
 # Replace the matching app/core file with this file.
 
-API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu Agent API Master Guide',
- 'subtitle': 'Internal developer guide for LogiKlu Agent API, including Focus Account Intelligence, Focus Contacts, '
+API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
+ 'subtitle': 'Internal developer guide for LogiKlu API, including Focus Account Intelligence, Focus Contacts, '
              'Campaigns, Leadforms, Users, Accounts, Contacts, OAuth/JWT, examples, filters, and error behavior, '
              'including submitted contact search for Leadforms, Users, and Roles APIs.',
  'base_url': 'https://api.logiklu.com',

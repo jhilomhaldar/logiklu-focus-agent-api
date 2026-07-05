@@ -51,7 +51,7 @@ def root():
 
     return {
         "status": "success",
-        "message": f"Welcome to LogiKlu Focus Agent API{environment_label}",
+        "message": f"Welcome to LogiKlu API{environment_label}",
         "environment": api_env,
         "docs": "/docs",
         "health": f"/api/{settings.API_VERSION}/health",
