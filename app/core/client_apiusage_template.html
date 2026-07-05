@@ -1086,9 +1086,17 @@ code{font-family:var(--font-mono);color:var(--text);}
     return fetch(buildDataUrl(params).toString(), {
       method:'GET',
       headers:{'Accept':'application/json'},
+      credentials:'same-origin',
       cache:'no-store'
     })
     .then(function(resp){
+      if(resp.status===401){
+        return resp.json().then(function(payload){
+          var loginUrl = (payload && payload.login_url) ? payload.login_url : (window.location.pathname.replace(/\/$/,'') + '/login');
+          window.location.href = loginUrl;
+          throw new Error('LOGIN_REQUIRED');
+        });
+      }
       if(!resp.ok){throw new Error('HTTP '+resp.status);}
       return resp.json();
     })
@@ -1096,6 +1104,7 @@ code{font-family:var(--font-mono);color:var(--text);}
       applyUsageData(payload, preferredEnv);
     })
     .catch(function(err){
+      if(err && err.message === 'LOGIN_REQUIRED'){return;}
       console.error(err);
       alert('Unable to refresh API usage data. Please try again.');
     })
