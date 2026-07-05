@@ -141,8 +141,11 @@ def get_log_table_name() -> str:
 
     if environment == "staging":
         return "lk_agent_api_request_logs_staging"
+    
+    if environment == "production":
+        return "lk_agent_api_request_logs"
 
-    return "lk_agent_api_request_logs"
+    return "lk_agent_api_request_logs_sandbox"
 
 
 def get_client_ip(request: Request) -> str:
