@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import health, auth_test, accounts, contacts, oauth, instructions, roles, users, focus_company_intelligence, focus_accounts, focus_account_intelligence, focus_contacts, leadforms, campaigns
+from app.api.v1.endpoints import health, auth_test, accounts, contacts, oauth, instructions, roles, users, focus_company_intelligence, focus_accounts, focus_account_intelligence, focus_contacts, leadforms, campaigns, client_apiusage
 
 
 api_router = APIRouter()
@@ -75,5 +75,8 @@ api_router.include_router(
     tags=["Email Campaigns"]
 )
 
-
+api_router.include_router(
+    client_apiusage.router,
+    tags=["API Usage"]
+)
 

@@ -1138,7 +1138,7 @@ def render_sidebar(data: Dict[str, Any]) -> str:
             <a class="logo" onclick="scrollToSection('overview')">
                 <img src="/static/images/logiklu-logo.png" alt="LogiKlu" />
             </a>
-            <div class="sidebar-version">Agent API · REST</div>
+            <div class="sidebar-version">API · REST</div>
         </div>
 
         <div class="nav-group">
@@ -2443,7 +2443,7 @@ pre code {
         </div>
 
         <div class="page-footer">
-            <span>LogiKlu Agent API Guide</span>
+            <span>LogiKlu API Guide</span>
             <span>Last updated 2026</span>
         </div>
 
@@ -2660,7 +2660,7 @@ function buildTryOutUrl(box) {
         }
     });
 
-    let url = baseUrl.replace(/\/$/, '') + '/' + path.replace(/^\//, '');
+    let url = baseUrl.replace(/\\/$/, '') + '/' + path.replace(/^\\//, '');
 
     const queryString = params.toString();
 

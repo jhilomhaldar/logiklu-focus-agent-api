@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "LogiKlu Focus Agent API"
+    APP_NAME: str = "LogiKlu Rest API"
     APP_ENV: str = "local"
     APP_DEBUG: bool = True
     API_VERSION: str = "v1"
