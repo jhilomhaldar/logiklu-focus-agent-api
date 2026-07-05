@@ -25,6 +25,14 @@ def _build_report(
     timezone: Optional[str],
     timezone_offset: Optional[int],
     daily_date: Optional[str],
+    weekly_range: Optional[str],
+    monthly_month: Optional[str],
+    call_search: Optional[str],
+    call_methods: Optional[str],
+    call_statuses: Optional[str],
+    calls_range: Optional[str],
+    calls_date_from: Optional[str],
+    calls_date_to: Optional[str],
 ):
     return build_client_apiusage_report(
         oauth_client_id=oauth_client_id,
@@ -37,6 +45,14 @@ def _build_report(
         timezone=timezone,
         timezone_offset_minutes=timezone_offset,
         daily_date=daily_date,
+        weekly_range=weekly_range,
+        monthly_month=monthly_month,
+        call_search=call_search,
+        call_methods=call_methods,
+        call_statuses=call_statuses,
+        calls_range=calls_range,
+        calls_date_from=calls_date_from,
+        calls_date_to=calls_date_to,
     )
 
 
@@ -48,10 +64,18 @@ def client_apiusage_data(
     date_from: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
     date_to: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
     page: int = Query(default=1, ge=1),
-    per_page: int = Query(default=10, ge=1, le=50),
+    per_page: int = Query(default=20, ge=1, le=100),
     timezone: Optional[str] = Query(default=None, description="Browser IANA timezone, for example Asia/Calcutta"),
     timezone_offset: Optional[int] = Query(default=None, description="Browser timezone offset in minutes east of UTC"),
     daily_date: Optional[str] = Query(default=None, description="YYYY-MM-DD date for Daily report"),
+    weekly_range: Optional[str] = Query(default="this_week", description="this_week, last_week, or last_4_weeks"),
+    monthly_month: Optional[str] = Query(default=None, description="YYYY-MM month for Monthly report"),
+    call_search: Optional[str] = Query(default=None, description="Detailed calls search text"),
+    call_methods: Optional[str] = Query(default=None, description="Comma separated methods: GET,POST,PUT,PATCH,DELETE"),
+    call_statuses: Optional[str] = Query(default=None, description="Comma separated status groups: 2xx,3xx,4xx,5xx"),
+    calls_range: Optional[str] = Query(default="last_24_hours", description="last_24_hours,last_7_days,last_15_days,last_30_days,custom_range"),
+    calls_date_from: Optional[str] = Query(default=None, description="YYYY-MM-DD for detailed calls custom range"),
+    calls_date_to: Optional[str] = Query(default=None, description="YYYY-MM-DD for detailed calls custom range"),
 ):
     try:
         report = _build_report(
@@ -65,6 +89,14 @@ def client_apiusage_data(
             timezone=timezone,
             timezone_offset=timezone_offset,
             daily_date=daily_date,
+            weekly_range=weekly_range,
+            monthly_month=monthly_month,
+            call_search=call_search,
+            call_methods=call_methods,
+            call_statuses=call_statuses,
+            calls_range=calls_range,
+            calls_date_from=calls_date_from,
+            calls_date_to=calls_date_to,
         )
         status_code = 200 if report.get("valid") else 404
         return JSONResponse(content=report, status_code=status_code)
@@ -86,10 +118,18 @@ def client_apiusage_page(
     date_from: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
     date_to: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
     page: int = Query(default=1, ge=1),
-    per_page: int = Query(default=10, ge=1, le=50),
+    per_page: int = Query(default=20, ge=1, le=100),
     timezone: Optional[str] = Query(default=None, description="Browser IANA timezone, for example Asia/Calcutta"),
     timezone_offset: Optional[int] = Query(default=None, description="Browser timezone offset in minutes east of UTC"),
     daily_date: Optional[str] = Query(default=None, description="YYYY-MM-DD date for Daily report"),
+    weekly_range: Optional[str] = Query(default="this_week", description="this_week, last_week, or last_4_weeks"),
+    monthly_month: Optional[str] = Query(default=None, description="YYYY-MM month for Monthly report"),
+    call_search: Optional[str] = Query(default=None, description="Detailed calls search text"),
+    call_methods: Optional[str] = Query(default=None, description="Comma separated methods: GET,POST,PUT,PATCH,DELETE"),
+    call_statuses: Optional[str] = Query(default=None, description="Comma separated status groups: 2xx,3xx,4xx,5xx"),
+    calls_range: Optional[str] = Query(default="last_24_hours", description="last_24_hours,last_7_days,last_15_days,last_30_days,custom_range"),
+    calls_date_from: Optional[str] = Query(default=None, description="YYYY-MM-DD for detailed calls custom range"),
+    calls_date_to: Optional[str] = Query(default=None, description="YYYY-MM-DD for detailed calls custom range"),
 ):
     try:
         report = _build_report(
@@ -103,6 +143,14 @@ def client_apiusage_page(
             timezone=timezone,
             timezone_offset=timezone_offset,
             daily_date=daily_date,
+            weekly_range=weekly_range,
+            monthly_month=monthly_month,
+            call_search=call_search,
+            call_methods=call_methods,
+            call_statuses=call_statuses,
+            calls_range=calls_range,
+            calls_date_from=calls_date_from,
+            calls_date_to=calls_date_to,
         )
         if not report.get("valid"):
             return HTMLResponse(
