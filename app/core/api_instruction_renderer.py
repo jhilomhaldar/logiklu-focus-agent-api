@@ -990,12 +990,21 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
                 <span>Bearer Access Token</span>
                 <small>Required</small>
             </label>
-            <input type="password" data-access-token placeholder="YOUR_ACCESS_TOKEN" />
+            <textarea
+                data-access-token
+                class="secret-textarea secret-masked"
+                rows="4"
+                placeholder="YOUR_ACCESS_TOKEN"
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+            ></textarea>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
                 <button type="button" class="copy-btn" onclick="useSavedBearerToken(this)">Use Saved Token</button>
+                <button type="button" class="copy-btn" onclick="toggleSecretTextarea(this)">Show Token</button>
                 <button type="button" class="copy-btn" onclick="clearSavedBearerToken(this)">Clear Saved Token</button>
             </div>
-            <p>Generate a token from the /oauth/token Try Out section first, or paste one manually.</p>
+            <p>Generate a token from the /oauth/token Try Out section first, or paste one manually. The token box is multiline and masked like a password field.</p>
         </div>
         """
         submit_label = "Send Request"
@@ -1031,14 +1040,26 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
 
         {body_box}
 
+        <div class="try-preview-box">
+            <div class="try-preview-head">
+                <span>Auto Generated Try Out Preview</span>
+                <button class="copy-btn" type="button" onclick="copyTryOutUrl(this)">Copy URL</button>
+            </div>
+
+            <div class="try-url">
+                <span>Request URL</span>
+                <code data-request-url>{esc(base_url)}{esc(path)}</code>
+            </div>
+
+            <div class="try-generated-filter">
+                <span data-generated-filter-label>Filter Generation</span>
+                <pre><code data-generated-filter>{{}}</code></pre>
+            </div>
+        </div>
+
         <button type="button" class="try-btn" onclick="sendTryOutRequest(this)">
             {esc(submit_label)}
         </button>
-
-        <div class="try-url">
-            <span>Request URL</span>
-            <code data-request-url>{esc(base_url)}{esc(path)}</code>
-        </div>
 
         {token_output_box}
 
@@ -2231,6 +2252,18 @@ pre code {
     border-color: var(--accent);
 }
 
+.secret-textarea {
+    min-height: 92px;
+    resize: vertical;
+    line-height: 1.6;
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+
+.secret-textarea.secret-masked {
+    -webkit-text-security: disc;
+}
+
 .try-field p {
     margin-top: 0.3rem;
     color: var(--muted);
@@ -2274,6 +2307,51 @@ pre code {
     font-family: 'JetBrains Mono', monospace;
     color: var(--accent);
     word-break: break-all;
+}
+
+.try-preview-box {
+    background: rgba(0, 229, 160, 0.035);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem;
+    margin: 0 0 1rem;
+}
+
+.try-preview-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 0.75rem;
+}
+
+.try-preview-head span,
+.try-generated-filter > span {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+}
+
+.try-generated-filter {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 0.75rem;
+    border-radius: 8px;
+}
+
+.try-generated-filter pre {
+    margin-top: 0.4rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.try-generated-filter code {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent2);
+    font-size: 12px;
 }
 
 .try-response-wrap {
@@ -2577,6 +2655,25 @@ function clearSavedBearerToken(button) {
     }
 }
 
+function toggleSecretTextarea(button) {
+    const box = button.closest('.tryout-box');
+    const textarea = box ? box.querySelector('[data-access-token]') : null;
+
+    if (!textarea) {
+        return;
+    }
+
+    const isMasked = textarea.classList.contains('secret-masked');
+
+    if (isMasked) {
+        textarea.classList.remove('secret-masked');
+        button.textContent = 'Hide Token';
+    } else {
+        textarea.classList.add('secret-masked');
+        button.textContent = 'Show Token';
+    }
+}
+
 function applyGeneratedTokenToBearerFields(button) {
     const token = getSavedBearerToken();
 
@@ -2635,17 +2732,56 @@ function copyGeneratedToken(button) {
     });
 }
 
-function buildTryOutUrl(box) {
+function trimSlashEnd(value) {
+    value = String(value || '');
+
+    while (value.endsWith('/')) {
+        value = value.slice(0, -1);
+    }
+
+    return value;
+}
+
+function trimSlashStart(value) {
+    value = String(value || '');
+
+    while (value.startsWith('/')) {
+        value = value.slice(1);
+    }
+
+    return value;
+}
+
+function getTryOutFieldValue(input, usePlaceholderFallback) {
+    const value = input.value.trim();
+
+    if (value !== '') {
+        return value;
+    }
+
+    if (usePlaceholderFallback) {
+        return input.getAttribute('placeholder') || '';
+    }
+
+    return '';
+}
+
+function buildTryOutRequestPreview(box) {
     let baseUrl = getRuntimeBaseUrl(box);
     let path = box.getAttribute('data-path') || '';
-    let method = box.getAttribute('data-method') || 'GET';
+    const method = (box.getAttribute('data-method') || 'GET').toUpperCase();
+    const isTokenEndpoint = box.getAttribute('data-token-endpoint') === 'yes';
 
     const params = new URLSearchParams();
-    const inputs = box.querySelectorAll('[data-param-name]');
+    const queryParams = {};
+    const pathParams = {};
+    const bodyFields = {};
 
-    inputs.forEach(function(input) {
+    const queryInputs = box.querySelectorAll('[data-param-name]');
+
+    queryInputs.forEach(function(input) {
         const name = input.getAttribute('data-param-name');
-        const value = input.value.trim();
+        const value = getTryOutFieldValue(input, false);
 
         if (!name || value === '') {
             return;
@@ -2654,22 +2790,151 @@ function buildTryOutUrl(box) {
         const pathToken = '{' + name + '}';
 
         if (path.includes(pathToken)) {
-            path = path.replace(pathToken, encodeURIComponent(value));
+            path = path.split(pathToken).join(encodeURIComponent(value));
+            pathParams[name] = value;
         } else if (method === 'GET') {
             params.append(name, value);
+            queryParams[name] = value;
+        } else {
+            bodyFields[name] = value;
         }
     });
 
-    let url = baseUrl.replace(/\\/$/, '') + '/' + path.replace(/^\\//, '');
+    const bodyInputs = box.querySelectorAll('[data-body-field]');
 
+    bodyInputs.forEach(function(input) {
+        const name = input.getAttribute('data-body-field');
+        const value = getTryOutFieldValue(input, isTokenEndpoint);
+
+        if (name) {
+            bodyFields[name] = value;
+        }
+    });
+
+    let url = trimSlashEnd(baseUrl) + '/' + trimSlashStart(path);
     const queryString = params.toString();
 
     if (queryString) {
         url += '?' + queryString;
     }
 
-    return url;
+    let jsonBody = null;
+    let jsonBodyError = '';
+
+    if (method !== 'GET' && !isTokenEndpoint) {
+        const bodyBox = box.querySelector('[data-body-json]');
+        const bodyText = bodyBox ? bodyBox.value.trim() : '';
+
+        if (bodyText !== '') {
+            try {
+                jsonBody = JSON.parse(bodyText);
+            } catch (error) {
+                jsonBodyError = error.message;
+            }
+        }
+    }
+
+    const generated = {};
+
+    if (Object.keys(pathParams).length > 0) {
+        generated.path_params = pathParams;
+    }
+
+    if (method === 'GET') {
+        generated.query_filters = queryParams;
+    } else if (isTokenEndpoint) {
+        generated.json_body = bodyFields;
+    } else if (jsonBodyError) {
+        generated.json_body_error = jsonBodyError;
+    } else if (jsonBody !== null) {
+        generated.json_body = jsonBody;
+    } else {
+        generated.json_body = bodyFields;
+    }
+
+    return {
+        url: url,
+        generated: generated
+    };
 }
+
+function buildTryOutUrl(box) {
+    return buildTryOutRequestPreview(box).url;
+}
+
+function updateTryOutPreview(box) {
+    if (!box) {
+        return;
+    }
+
+    const preview = buildTryOutRequestPreview(box);
+    const requestUrlBox = box.querySelector('[data-request-url]');
+    const generatedFilterBox = box.querySelector('[data-generated-filter]');
+    const generatedFilterLabel = box.querySelector('[data-generated-filter-label]');
+    const method = (box.getAttribute('data-method') || 'GET').toUpperCase();
+    const isTokenEndpoint = box.getAttribute('data-token-endpoint') === 'yes';
+
+    if (requestUrlBox) {
+        requestUrlBox.textContent = preview.url;
+    }
+
+    if (generatedFilterLabel) {
+        if (method === 'GET') {
+            generatedFilterLabel.textContent = 'Filter Generation';
+        } else if (isTokenEndpoint) {
+            generatedFilterLabel.textContent = 'Generated JSON Body';
+        } else {
+            generatedFilterLabel.textContent = 'Generated Request Data';
+        }
+    }
+
+    if (generatedFilterBox) {
+        generatedFilterBox.textContent = JSON.stringify(preview.generated, null, 2);
+    }
+}
+
+function initTryOutPreviewEvents() {
+    document.querySelectorAll('.tryout-box').forEach(function(box) {
+        updateTryOutPreview(box);
+
+        box.querySelectorAll('input, textarea, select').forEach(function(field) {
+            field.addEventListener('input', function() {
+                updateTryOutPreview(box);
+            });
+
+            field.addEventListener('change', function() {
+                updateTryOutPreview(box);
+            });
+        });
+    });
+}
+
+function copyTryOutUrl(button) {
+    const box = button.closest('.tryout-box');
+
+    if (!box) {
+        return;
+    }
+
+    updateTryOutPreview(box);
+
+    const requestUrlBox = box.querySelector('[data-request-url]');
+    const url = requestUrlBox ? requestUrlBox.textContent.trim() : buildTryOutUrl(box);
+
+    if (!url) {
+        alert('No request URL available to copy.');
+        return;
+    }
+
+    navigator.clipboard.writeText(url).then(function() {
+        button.textContent = 'Copied!';
+        setTimeout(function() {
+            button.textContent = 'Copy URL';
+        }, 1200);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', initTryOutPreviewEvents);
 
 function buildTokenEndpointBody(box) {
     const payload = {};
@@ -2741,6 +3006,7 @@ async function sendTryOutRequest(button) {
     const authType = box.getAttribute('data-auth-type') || 'bearer';
     const isTokenEndpoint = box.getAttribute('data-token-endpoint') === 'yes';
 
+    updateTryOutPreview(box);
     const url = buildTryOutUrl(box);
 
     requestUrlBox.textContent = url;
