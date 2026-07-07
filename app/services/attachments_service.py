@@ -1,4 +1,4 @@
-# app/services/attachment_service.py
+# app/services/attachments_service.py
 
 import json
 import math
@@ -13,7 +13,7 @@ from app.db.client import get_client_connection
 
 SCHEMA_VERSION = "logiklu_attachment.v1"
 DEFAULT_MASTER_USER_TABLE = "logiklu0_leadactuator.zp_users"
-ALLOWED_ATTACHMENT_SCOPES = ["lead", "contact", "deal"]
+ALLOWED_ATTACHMENT_SCOPES = ["account", "contact", "deal"]
 
 CONTACT_PHONE_COLUMN_CANDIDATES = [
     "primary_phone",
@@ -380,7 +380,7 @@ def append_filesize_range_filter(where_parts: List[str], params: List[Any], min_
 def append_attachment_scope_filter(where_parts: List[str], attachment_scope: Optional[str]) -> None:
     attachment_scope = str(attachment_scope or "all").strip().lower()
 
-    if attachment_scope == "lead":
+    if attachment_scope == "account":
         where_parts.append(
             """
             EXISTS (
@@ -417,7 +417,7 @@ def append_attachment_scope_filter(where_parts: List[str], attachment_scope: Opt
         )
         return
 
-    # /usernotes returns notes that are attached to at least one supported CRM object.
+    # /attachments returns attachments that are attached to at least one supported CRM object.
     where_parts.append(
         """
         (
@@ -749,19 +749,23 @@ def append_named_filter(where_parts: List[str], params: List[Any], field_name: s
         append_lead_integer_filter(where_parts, params, "company_id", value)
         return
 
-    if field_name == "lead_name":
+    if field_name in ["lead_name", "account_name"]:
         append_lead_like_filter(where_parts, params, "lm_filter.lead_name", value)
         return
 
-    if field_name == "lead_city":
+    if field_name in ["lead_type", "account_type"]:
+        append_lead_like_filter(where_parts, params, "lm_filter.lead_type", value)
+        return
+
+    if field_name in ["lead_city", "account_city"]:
         append_lead_like_filter(where_parts, params, "lm_filter.city", value)
         return
 
-    if field_name == "lead_state":
+    if field_name in ["lead_state", "account_state"]:
         append_lead_like_filter(where_parts, params, "lm_filter.state", value)
         return
 
-    if field_name == "lead_country":
+    if field_name in ["lead_country", "account_country"]:
         append_lead_like_filter(where_parts, params, "lm_filter.country", value)
         return
 
@@ -1062,7 +1066,7 @@ def get_user(user_map: Dict[int, Dict[str, Any]], user_id: Any) -> Optional[Dict
     return user_map.get(parsed_id) or {"id": parsed_id, "name": None, "email": None}
 
 
-def fetch_attachment_leads(connection: Any, activity_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:
+def fetch_attachment_accounts(connection: Any, activity_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:
     if not activity_ids:
         return {}
 
@@ -1095,12 +1099,14 @@ def fetch_attachment_leads(connection: Any, activity_ids: List[int]) -> Dict[int
             continue
 
         output.setdefault(activity_id, []).append({
-            "lead_id": row.get("lead_id"),
+            "account_id": row.get("lead_id"),
             "name": row.get("lead_name"),
-            "lead_type": row.get("lead_type"),
-            "city": row.get("city"),
-            "state": row.get("state"),
-            "country": row.get("country"),
+            "account_type": row.get("lead_type"),
+            "location": {
+                "city": row.get("city"),
+                "state": row.get("state"),
+                "country": row.get("country"),
+            },
         })
 
     return output
@@ -1215,7 +1221,7 @@ def fetch_attachment_deals(connection: Any, activity_ids: List[int]) -> Dict[int
 def determine_attachment_type(
     activity_id: int,
     attachment_scope: Optional[str],
-    leads_map: Dict[int, List[Dict[str, Any]]],
+    accounts_map: Dict[int, List[Dict[str, Any]]],
     contacts_map: Dict[int, List[Dict[str, Any]]],
     deals_map: Dict[int, List[Dict[str, Any]]],
 ) -> Optional[str]:
@@ -1228,8 +1234,8 @@ def determine_attachment_type(
     if activity_id in contacts_map and contacts_map.get(activity_id):
         return "contact"
 
-    if activity_id in leads_map and leads_map.get(activity_id):
-        return "lead"
+    if activity_id in accounts_map and accounts_map.get(activity_id):
+        return "account"
 
     return None
 
@@ -1237,7 +1243,7 @@ def determine_attachment_type(
 def build_attachment_item(
     row: Dict[str, Any],
     attachment_scope: Optional[str],
-    leads_map: Dict[int, List[Dict[str, Any]]],
+    accounts_map: Dict[int, List[Dict[str, Any]]],
     contacts_map: Dict[int, List[Dict[str, Any]]],
     deals_map: Dict[int, List[Dict[str, Any]]],
     user_map: Dict[int, Dict[str, Any]],
@@ -1246,14 +1252,14 @@ def build_attachment_item(
     details = safe_json_decode(row.get("activity_details"), {})
 
     fullpath = first_non_empty(details.get("fullpath"), details.get("full_path"), details.get("path"))
-    attachment_type = determine_attachment_type(activity_id, attachment_scope, leads_map, contacts_map, deals_map)
+    attachment_type = determine_attachment_type(activity_id, attachment_scope, accounts_map, contacts_map, deals_map)
 
-    lead = None
+    account = None
     contact = None
     deal = None
 
-    if attachment_type == "lead":
-        lead = (leads_map.get(activity_id) or [None])[0]
+    if attachment_type == "account":
+        account = (accounts_map.get(activity_id) or [None])[0]
     elif attachment_type == "contact":
         contact = (contacts_map.get(activity_id) or [None])[0]
     elif attachment_type == "deal":
@@ -1268,7 +1274,7 @@ def build_attachment_item(
         "filetype": first_non_empty(details.get("filetype"), details.get("file_type")),
         "filesize": to_number(first_non_empty(details.get("filesize"), details.get("file_size"))),
         "attachment_url": build_attachment_url(fullpath),
-        "lead": lead,
+        "account": account,
         "contact": contact,
         "deal": deal,
         "created_by": get_user(user_map, row.get("created_by")),
@@ -1284,7 +1290,7 @@ def hydrate_attachment_rows(connection: Any, rows: List[Dict[str, Any]], attachm
 
     activity_ids = [int(row.get("attachment_id")) for row in rows if row.get("attachment_id") is not None]
 
-    leads_map = fetch_attachment_leads(connection, activity_ids)
+    accounts_map = fetch_attachment_accounts(connection, activity_ids)
     contacts_map = fetch_attachment_contacts(connection, activity_ids)
     deals_map = fetch_attachment_deals(connection, activity_ids)
 
@@ -1299,7 +1305,7 @@ def hydrate_attachment_rows(connection: Any, rows: List[Dict[str, Any]], attachm
         build_attachment_item(
             row=row,
             attachment_scope=attachment_scope,
-            leads_map=leads_map,
+            accounts_map=accounts_map,
             contacts_map=contacts_map,
             deals_map=deals_map,
             user_map=user_map,
