@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.response import success_response, error_response, current_utc_datetime
 from app.core.security import authenticate_request
-from app.services.deal_service import (
+from app.services.deals_service import (
     SCHEMA_VERSION,
     fetch_deal_detail,
     fetch_deals_list,

@@ -1,4 +1,4 @@
-# app/api/v1/endpoints/note.py
+# app/api/v1/endpoints/notes.py
 
 from typing import Any, Dict, Optional
 
@@ -7,11 +7,11 @@ from fastapi.responses import JSONResponse
 
 from app.core.response import success_response, error_response, current_utc_datetime
 from app.core.security import authenticate_request
-from app.services.note_service import (
+from app.services.notes_service import (
     ALLOWED_NOTE_SCOPES,
     SCHEMA_VERSION,
-    fetch_user_note_detail,
-    fetch_user_notes_list,
+    fetch_note_detail,
+    fetch_notes_list,
 )
 
 
@@ -38,7 +38,7 @@ def _fetch_notes_response(
 ):
     client_database = auth_context.get("client_database")
 
-    result = fetch_user_notes_list(
+    result = fetch_notes_list(
         client_database=client_database,
         note_scope=note_scope,
         page=page,
@@ -67,7 +67,7 @@ def _fetch_notes_response(
     )
 
 
-@router.get("/note")
+@router.get("/notes")
 def get_user_notes(
     auth_context: dict = Depends(authenticate_request),
     page: int = Query(default=1, ge=1),
@@ -85,9 +85,15 @@ def get_user_notes(
 
     lead_id: Optional[str] = Query(default=None),
     account_id: Optional[str] = Query(default=None),
+    account_name: Optional[str] = Query(default=None),
+    account_type: Optional[str] = Query(default=None),
+    account_city: Optional[str] = Query(default=None),
+    account_state: Optional[str] = Query(default=None),
+    account_country: Optional[str] = Query(default=None),
     customer_id: Optional[str] = Query(default=None),
     company_id: Optional[str] = Query(default=None),
     lead_name: Optional[str] = Query(default=None),
+    lead_type: Optional[str] = Query(default=None),
     lead_city: Optional[str] = Query(default=None),
     lead_state: Optional[str] = Query(default=None),
     lead_country: Optional[str] = Query(default=None),
@@ -128,7 +134,7 @@ def get_user_notes(
     Protected Notes list API.
 
     URL:
-    /note
+    /notes
     """
 
     try:
@@ -141,9 +147,15 @@ def get_user_notes(
 
             lead_id=lead_id,
             account_id=account_id,
+            account_name=account_name,
+            account_type=account_type,
+            account_city=account_city,
+            account_state=account_state,
+            account_country=account_country,
             customer_id=customer_id,
             company_id=company_id,
             lead_name=lead_name,
+            lead_type=lead_type,
             lead_city=lead_city,
             lead_state=lead_state,
             lead_country=lead_country,
@@ -197,7 +209,7 @@ def get_user_notes(
             status_code=500,
             content=error_response(
                 message="Failed to fetch notes",
-                error_code="LOGIKLU_USER_NOTES_FETCH_FAILED",
+                error_code="LOGIKLU_NOTES_FETCH_FAILED",
                 data={
                     "error": str(exc),
                     "timestamp": current_utc_datetime(),
@@ -207,7 +219,7 @@ def get_user_notes(
 
 
 
-@router.get("/note/{note_id:int}")
+@router.get("/notes/{note_id:int}")
 def get_user_note_by_id(
     note_id: int,
     auth_context: dict = Depends(authenticate_request),
@@ -216,12 +228,12 @@ def get_user_note_by_id(
     Protected Note detail API.
 
     URL:
-    /note/{note_id}
+    /notes/{note_id}
     """
 
     try:
         client_database = auth_context.get("client_database")
-        item = fetch_user_note_detail(
+        item = fetch_note_detail(
             client_database=client_database,
             note_id=note_id,
         )
@@ -231,7 +243,7 @@ def get_user_note_by_id(
                 status_code=404,
                 content=error_response(
                     message="Note not found",
-                    error_code="LOGIKLU_USER_NOTE_NOT_FOUND",
+                    error_code="LOGIKLU_NOTE_NOT_FOUND",
                     data={
                         "note_id": note_id,
                         "timestamp": current_utc_datetime(),
@@ -257,7 +269,7 @@ def get_user_note_by_id(
             status_code=500,
             content=error_response(
                 message="Failed to fetch note",
-                error_code="LOGIKLU_USER_NOTE_FETCH_FAILED",
+                error_code="LOGIKLU_NOTE_FETCH_FAILED",
                 data={
                     "note_id": note_id,
                     "error": str(exc),
@@ -266,7 +278,7 @@ def get_user_note_by_id(
             ),
         )
 
-@router.get("/note/{note_scope}")
+@router.get("/notes/{note_scope}")
 def get_user_notes_by_scope(
     note_scope: str,
     auth_context: dict = Depends(authenticate_request),
@@ -285,9 +297,15 @@ def get_user_notes_by_scope(
 
     lead_id: Optional[str] = Query(default=None),
     account_id: Optional[str] = Query(default=None),
+    account_name: Optional[str] = Query(default=None),
+    account_type: Optional[str] = Query(default=None),
+    account_city: Optional[str] = Query(default=None),
+    account_state: Optional[str] = Query(default=None),
+    account_country: Optional[str] = Query(default=None),
     customer_id: Optional[str] = Query(default=None),
     company_id: Optional[str] = Query(default=None),
     lead_name: Optional[str] = Query(default=None),
+    lead_type: Optional[str] = Query(default=None),
     lead_city: Optional[str] = Query(default=None),
     lead_state: Optional[str] = Query(default=None),
     lead_country: Optional[str] = Query(default=None),
@@ -328,9 +346,9 @@ def get_user_notes_by_scope(
     Protected Notes by scope API.
 
     URLs:
-    /note/lead
-    /note/contact
-    /note/deal
+    /notes/account
+    /notes/contact
+    /notes/deal
     """
 
     try:
@@ -341,7 +359,7 @@ def get_user_notes_by_scope(
                 status_code=400,
                 content=error_response(
                     message="Invalid notes scope",
-                    error_code="LOGIKLU_USER_NOTES_INVALID_SCOPE",
+                    error_code="LOGIKLU_NOTES_INVALID_SCOPE",
                     data={
                         "allowed_scopes": ALLOWED_NOTE_SCOPES,
                         "timestamp": current_utc_datetime(),
@@ -358,9 +376,15 @@ def get_user_notes_by_scope(
 
             lead_id=lead_id,
             account_id=account_id,
+            account_name=account_name,
+            account_type=account_type,
+            account_city=account_city,
+            account_state=account_state,
+            account_country=account_country,
             customer_id=customer_id,
             company_id=company_id,
             lead_name=lead_name,
+            lead_type=lead_type,
             lead_city=lead_city,
             lead_state=lead_state,
             lead_country=lead_country,
@@ -414,7 +438,7 @@ def get_user_notes_by_scope(
             status_code=500,
             content=error_response(
                 message="Failed to fetch notes",
-                error_code="LOGIKLU_USER_NOTES_SCOPE_FETCH_FAILED",
+                error_code="LOGIKLU_NOTES_SCOPE_FETCH_FAILED",
                 data={
                     "note_scope": note_scope,
                     "error": str(exc),
