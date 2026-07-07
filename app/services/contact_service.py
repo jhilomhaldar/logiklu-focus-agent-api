@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import settings
 from app.db.client import get_client_connection, validate_database_name
-from app.services.account_service import (
+from app.services.accounts_service import (
     normalize_contact_row,
     normalize_account_row,
     parse_json_value,
