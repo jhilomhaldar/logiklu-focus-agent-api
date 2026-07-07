@@ -10,7 +10,7 @@ from app.db.client import get_client_connection
 
 
 SCHEMA_VERSION = "logiklu_deal.v1"
-DEFAULT_MASTER_USER_TABLE = "master_table.zp_users"
+DEFAULT_MASTER_USER_TABLE = "logiklu0_leadactuator.zp_users"
 DEFAULT_ATTACHMENT_BASE_URL = "https://logiklu.com/app/v1/"
 
 
@@ -104,6 +104,81 @@ def first_non_empty(*values: Any) -> Any:
     return None
 
 
+def format_contact_phone(value: Any) -> Optional[str]:
+    """Return contact phone as '+CC number' when stored as JSON."""
+    if value is None:
+        return None
+
+    if isinstance(value, dict):
+        country_code = str(value.get("country_code") or "").strip()
+        phone = str(value.get("phone") or value.get("number") or "").strip()
+        combined = " ".join([part for part in [country_code, phone] if part]).strip()
+        return combined or None
+
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="ignore")
+
+    text = str(value).strip()
+
+    if not text:
+        return None
+
+    if text.startswith("{") and text.endswith("}"):
+        decoded = safe_json_decode(text, {})
+        if isinstance(decoded, dict):
+            country_code = str(decoded.get("country_code") or "").strip()
+            phone = str(decoded.get("phone") or decoded.get("number") or "").strip()
+            combined = " ".join([part for part in [country_code, phone] if part]).strip()
+            return combined or None
+
+    return text
+
+
+def extract_original_filename(value: Any) -> Optional[str]:
+    """originalname may be a string or an upload-object JSON."""
+    if value is None:
+        return None
+
+    if isinstance(value, dict):
+        return first_non_empty(value.get("name"), value.get("filename"), value.get("originalname"))
+
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="ignore")
+
+    text = str(value).strip()
+
+    if not text:
+        return None
+
+    if text.startswith("{") and text.endswith("}"):
+        decoded = safe_json_decode(text, {})
+        if isinstance(decoded, dict):
+            return first_non_empty(decoded.get("name"), decoded.get("filename"), decoded.get("originalname"))
+
+    return text
+
+
+def build_attachment_url(fullpath: Any) -> Optional[str]:
+    if not fullpath:
+        return None
+
+    path = str(fullpath).replace("\\", "/").replace("\\/", "/").strip()
+
+    if not path:
+        return None
+
+    # Old data may store absolute paths like /var/www/html/app/v1/attachments/...
+    marker = "app/v1/"
+    if marker in path:
+        path = path.split(marker, 1)[1]
+
+    if "attachments/" in path:
+        path = path[path.find("attachments/"):]
+
+    base_url = get_attachment_base_url()
+    return base_url + path.lstrip("/")
+
+
 def clean_filter_value(value: Any) -> Optional[str]:
     if value is None:
         return None
@@ -144,7 +219,7 @@ def unique_ints(values: List[Any]) -> List[int]:
     for value in values:
         int_value = to_int(value)
 
-        if int_value is None or int_value in seen:
+        if int_value is None or int_value <= 0 or int_value in seen:
             continue
 
         seen.add(int_value)
@@ -154,13 +229,8 @@ def unique_ints(values: List[Any]) -> List[int]:
 
 
 def get_master_user_table() -> str:
-    table_name = str(getattr(settings, "MASTER_USER_TABLE", DEFAULT_MASTER_USER_TABLE) or DEFAULT_MASTER_USER_TABLE).strip()
-
-    # Settings are trusted, but validate to avoid accidental unsafe SQL identifiers.
-    if not re.match(r"^[A-Za-z0-9_\.]+$", table_name):
-        return DEFAULT_MASTER_USER_TABLE
-
-    return table_name
+    # Deal user lookup must use the LogiKlu actuator user table.
+    return DEFAULT_MASTER_USER_TABLE
 
 
 def get_attachment_base_url() -> str:
@@ -780,7 +850,7 @@ def fetch_users(connection: Any, user_ids: List[Any]) -> Dict[int, Dict[str, Any
 def get_user(user_map: Dict[int, Dict[str, Any]], user_id: Any) -> Optional[Dict[str, Any]]:
     parsed_id = to_int(user_id)
 
-    if parsed_id is None:
+    if parsed_id is None or parsed_id <= 0:
         return None
 
     return user_map.get(parsed_id) or {"id": parsed_id, "name": None, "email": None}
@@ -959,10 +1029,12 @@ def fetch_contacts(connection: Any, contact_ids: List[int]) -> Dict[int, Dict[st
         )
 
         output[contact_id] = {
-            "id": contact_id,
+            "contact_id": contact_id,
             "name": name,
             "email": first_non_empty(row.get("email"), row.get("primary_email")),
-            "phone": first_non_empty(row.get("phone"), row.get("primary_phone"), row.get("mobile")),
+            "phone": format_contact_phone(
+                first_non_empty(row.get("primary_phone"), row.get("phone"), row.get("mobile"))
+            ),
         }
 
     return output
@@ -1169,7 +1241,6 @@ def build_deal_activities(raw_activities: List[Dict[str, Any]], user_map: Dict[i
     notes = []
     attachments = []
     activities = []
-    attachment_base_url = get_attachment_base_url()
 
     for activity in raw_activities:
         activity_type = str(activity.get("activity_type") or "").strip().lower()
@@ -1189,18 +1260,18 @@ def build_deal_activities(raw_activities: List[Dict[str, Any]], user_map: Dict[i
             continue
 
         if activity_type == "attachment":
-            fullpath = first_non_empty(details.get("fullpath"), "")
-            fullpath = str(fullpath or "").replace("\\/", "/").lstrip("/")
-            attachment_path = f"{attachment_base_url}{fullpath}" if fullpath else None
+            fullpath = first_non_empty(details.get("fullpath"), details.get("full_path"), details.get("path"))
 
             attachments.append(
                 {
                     "name": activity.get("activity_name"),
-                    "originalname": first_non_empty(details.get("originalname"), details.get("original_name")),
+                    "originalname": extract_original_filename(
+                        first_non_empty(details.get("originalname"), details.get("original_name"))
+                    ),
                     "attachmentname": first_non_empty(details.get("modifiedname"), details.get("modified_name")),
                     "filetype": first_non_empty(details.get("filetype"), details.get("file_type")),
                     "filesize": to_number(first_non_empty(details.get("filesize"), details.get("file_size"))),
-                    "attachment_path": attachment_path,
+                    "attachment_url": build_attachment_url(fullpath),
                     "created_by": get_user(user_map, activity.get("created_by")),
                     "created_date": format_datetime(activity.get("created_date")),
                     "modified_by": get_user(user_map, activity.get("modified_by")),
@@ -1225,6 +1296,10 @@ def build_deal_activities(raw_activities: List[Dict[str, Any]], user_map: Dict[i
                 "startdate": format_datetime(activity.get("startdate")),
                 "enddate": format_datetime(activity.get("enddate")),
                 "guests": guests,
+                "created_by": get_user(user_map, activity.get("created_by")),
+                "created_date": format_datetime(activity.get("created_date")),
+                "modified_by": get_user(user_map, activity.get("modified_by")),
+                "modified_date": format_datetime(activity.get("modified_date")),
             }
         )
 
@@ -1271,7 +1346,7 @@ def build_closed_summary(
 
     return {
         "id": closed_id,
-        "lead_id": row.get("closed_summary_lead_id"),
+        "account_id": row.get("closed_summary_lead_id"),
         "closed_state": row.get("closed_state"),
         "closed_by": get_user(user_map, row.get("closed_summary_closed_by")),
         "closed_date": format_datetime(row.get("closed_summary_closed_date")),
@@ -1296,13 +1371,13 @@ def build_assigned_users(
     for assignment in assignments:
         user_id = to_int(assignment.get("user_id"))
 
-        if user_id is not None:
+        if user_id is not None and user_id > 0:
             user_ids.append(user_id)
 
     if not user_ids:
         owner_id = to_int(row.get("owner"))
 
-        if owner_id is not None:
+        if owner_id is not None and owner_id > 0:
             user_ids.append(owner_id)
 
     assigned = []
@@ -1358,20 +1433,24 @@ def build_deal_item(
         "deal_id": row.get("deal_id"),
         "deal_name": row.get("deal_name"),
         "deal_description": row.get("deal_description"),
-        "deal_type": row.get("deal_type"),
+        "deal_temparature": row.get("deal_type"),
         "account": {
             "account_id": row.get("account_id"),
             "name": row.get("account_name"),
-            "lead_type": row.get("account_lead_type"),
+            "account_type": row.get("account_lead_type"),
+            "location": {
+                "city": row.get("account_city"),
+                "state": row.get("account_state"),
+                "country": row.get("account_country"),
+            },
         },
         "contacts": contacts,
-        "opportunity_status": build_status_object(row, "opportunity_status"),
+        "deal_stage": build_status_object(row, "opportunity_status"),
         "status": row.get("status"),
         "deal_status": row.get("deal_status"),
         "next_stage": build_status_object(row, "next_stage"),
         "revenue": to_number(row.get("revenue")),
         "currency": row.get("currency"),
-        "opportunity_amount": safe_json_decode(row.get("opportunity_amount"), {}),
         "closing_date": format_date(row.get("closing_date")),
         "situational_barometer": row.get("situational_barometer"),
         "confidence_level": to_number(row.get("confidence_level")),
@@ -1392,10 +1471,8 @@ def build_deal_item(
         "is_important": row.get("is_important"),
         "pre_deal": row.get("pre_deal"),
         "converted_customer_deal": row.get("converted_customer_deal"),
-        "visible": row.get("visible"),
         "created_date": format_datetime(row.get("created_date")),
         "modified_date": format_datetime(row.get("modified_date")),
-        "timezone": row.get("timezone"),
     }
 
 
@@ -1530,6 +1607,9 @@ def fetch_deals_list(
                 lm.lead_id AS account_id,
                 lm.lead_name AS account_name,
                 lm.lead_type AS account_lead_type,
+                lm.city AS account_city,
+                lm.state AS account_state,
+                lm.country AS account_country,
 
                 status_action.id AS opportunity_status_id,
                 status_action.title AS opportunity_status_title,
@@ -1565,7 +1645,7 @@ def fetch_deals_list(
             LEFT JOIN lk_opportunity_closed oc
                 ON oc.opportunity_id = o.opportunity_id
             WHERE {where_clause}
-            ORDER BY o.modified_date DESC, o.opportunity_id DESC
+            ORDER BY o.created_date ASC, o.opportunity_id ASC
             LIMIT %s OFFSET %s
         """
 

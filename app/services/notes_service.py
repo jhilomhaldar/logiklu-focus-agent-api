@@ -1,4 +1,4 @@
-# app/services/note_service.py
+# app/services/notes_service.py
 
 import json
 import math
@@ -13,7 +13,20 @@ from app.db.client import get_client_connection
 
 SCHEMA_VERSION = "logiklu_note.v1"
 DEFAULT_MASTER_USER_TABLE = "logiklu0_leadactuator.zp_users"
-ALLOWED_NOTE_SCOPES = ["lead", "contact", "deal"]
+ALLOWED_NOTE_SCOPES = ["account", "contact", "deal"]
+
+
+def normalize_note_scope(note_scope: Optional[str]) -> Optional[str]:
+    """Public note scope uses account/contact/deal. Internal database mapping still uses lead tables."""
+    if note_scope is None:
+        return None
+
+    value = str(note_scope or "").strip().lower()
+
+    if value == "lead":
+        return "account"
+
+    return value or None
 
 
 # -----------------------------
@@ -190,7 +203,7 @@ def make_placeholders(values: List[Any]) -> str:
 
 
 def get_master_user_table() -> str:
-    # User Notes must map users from this master actuator table.
+    # Notes must map users from this master actuator table.
     return DEFAULT_MASTER_USER_TABLE
 
 
@@ -264,9 +277,9 @@ def append_date_range_filter(
 
 
 def append_note_scope_filter(where_parts: List[str], note_scope: Optional[str]) -> None:
-    note_scope = str(note_scope or "all").strip().lower()
+    note_scope = normalize_note_scope(note_scope) or "all"
 
-    if note_scope == "lead":
+    if note_scope == "account":
         where_parts.append(
             """
             EXISTS (
@@ -303,7 +316,7 @@ def append_note_scope_filter(where_parts: List[str], note_scope: Optional[str]) 
         )
         return
 
-    # /usernotes returns notes that are attached to at least one supported CRM object.
+    # /notes returns notes that are attached to at least one supported CRM object.
     where_parts.append(
         """
         (
@@ -611,19 +624,23 @@ def append_named_filter(where_parts: List[str], params: List[Any], field_name: s
         append_lead_integer_filter(where_parts, params, "company_id", value)
         return
 
-    if field_name == "lead_name":
+    if field_name in ["lead_name", "account_name"]:
         append_lead_like_filter(where_parts, params, "lm_filter.lead_name", value)
         return
 
-    if field_name == "lead_city":
+    if field_name in ["lead_type", "account_type"]:
+        append_lead_like_filter(where_parts, params, "lm_filter.lead_type", value)
+        return
+
+    if field_name in ["lead_city", "account_city"]:
         append_lead_like_filter(where_parts, params, "lm_filter.city", value)
         return
 
-    if field_name == "lead_state":
+    if field_name in ["lead_state", "account_state"]:
         append_lead_like_filter(where_parts, params, "lm_filter.state", value)
         return
 
-    if field_name == "lead_country":
+    if field_name in ["lead_country", "account_country"]:
         append_lead_like_filter(where_parts, params, "lm_filter.country", value)
         return
 
@@ -759,6 +776,7 @@ def build_where_clause(
                         WHERE lal_search.activity_id = las.activity_id
                           AND (
                                 lm_search.lead_name LIKE %s
+                                OR lm_search.lead_type LIKE %s
                                 OR lm_search.city LIKE %s
                                 OR lm_search.state LIKE %s
                                 OR lm_search.country LIKE %s
@@ -794,6 +812,7 @@ def build_where_clause(
                 """
             )
             params.extend([
+                search_value,
                 search_value,
                 search_value,
                 search_value,
@@ -898,7 +917,7 @@ def get_user(user_map: Dict[int, Dict[str, Any]], user_id: Any) -> Optional[Dict
     return user_map.get(parsed_id) or {"id": parsed_id, "name": None, "email": None}
 
 
-def fetch_note_leads(connection: Any, activity_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:
+def fetch_note_accounts(connection: Any, activity_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:
     if not activity_ids:
         return {}
 
@@ -933,12 +952,14 @@ def fetch_note_leads(connection: Any, activity_ids: List[int]) -> Dict[int, List
             continue
 
         output.setdefault(activity_id, []).append({
-            "lead_id": row.get("lead_id"),
+            "account_id": row.get("lead_id"),
             "name": row.get("lead_name"),
-            "lead_type": row.get("lead_type"),
-            "city": row.get("city"),
-            "state": row.get("state"),
-            "country": row.get("country"),
+            "account_type": row.get("lead_type"),
+            "location": {
+                "city": row.get("city"),
+                "state": row.get("state"),
+                "country": row.get("country"),
+            },
         })
 
     return output
@@ -1050,10 +1071,12 @@ def fetch_note_deals(connection: Any, activity_ids: List[int]) -> Dict[int, List
 def determine_note_type(
     activity_id: int,
     note_scope: Optional[str],
-    leads_map: Dict[int, List[Dict[str, Any]]],
+    accounts_map: Dict[int, List[Dict[str, Any]]],
     contacts_map: Dict[int, List[Dict[str, Any]]],
     deals_map: Dict[int, List[Dict[str, Any]]],
 ) -> Optional[str]:
+    note_scope = normalize_note_scope(note_scope)
+
     if note_scope in ALLOWED_NOTE_SCOPES:
         return note_scope
 
@@ -1063,8 +1086,8 @@ def determine_note_type(
     if activity_id in contacts_map and contacts_map.get(activity_id):
         return "contact"
 
-    if activity_id in leads_map and leads_map.get(activity_id):
-        return "lead"
+    if activity_id in accounts_map and accounts_map.get(activity_id):
+        return "account"
 
     return None
 
@@ -1072,21 +1095,21 @@ def determine_note_type(
 def build_note_item(
     row: Dict[str, Any],
     note_scope: Optional[str],
-    leads_map: Dict[int, List[Dict[str, Any]]],
+    accounts_map: Dict[int, List[Dict[str, Any]]],
     contacts_map: Dict[int, List[Dict[str, Any]]],
     deals_map: Dict[int, List[Dict[str, Any]]],
     user_map: Dict[int, Dict[str, Any]],
 ) -> Dict[str, Any]:
     activity_id = int(row.get("note_id"))
     details = safe_json_decode(row.get("activity_details"), {})
-    note_type = determine_note_type(activity_id, note_scope, leads_map, contacts_map, deals_map)
+    note_type = determine_note_type(activity_id, note_scope, accounts_map, contacts_map, deals_map)
 
-    lead = None
+    account = None
     contact = None
     deal = None
 
-    if note_type == "lead":
-        lead = (leads_map.get(activity_id) or [None])[0]
+    if note_type == "account":
+        account = (accounts_map.get(activity_id) or [None])[0]
     elif note_type == "contact":
         contact = (contacts_map.get(activity_id) or [None])[0]
     elif note_type == "deal":
@@ -1097,7 +1120,7 @@ def build_note_item(
         "note_type": note_type,
         "subject": first_non_empty(details.get("Subject"), details.get("subject"), row.get("activity_name")),
         "note": first_non_empty(details.get("Note"), details.get("note")),
-        "lead": lead,
+        "account": account,
         "contact": contact,
         "deal": deal,
         "created_by": get_user(user_map, row.get("created_by")),
@@ -1112,7 +1135,7 @@ def hydrate_note_rows(connection: Any, rows: List[Dict[str, Any]], note_scope: O
 
     activity_ids = [int(row.get("note_id")) for row in rows if row.get("note_id") is not None]
 
-    leads_map = fetch_note_leads(connection, activity_ids)
+    accounts_map = fetch_note_accounts(connection, activity_ids)
     contacts_map = fetch_note_contacts(connection, activity_ids)
     deals_map = fetch_note_deals(connection, activity_ids)
 
@@ -1127,7 +1150,7 @@ def hydrate_note_rows(connection: Any, rows: List[Dict[str, Any]], note_scope: O
         build_note_item(
             row=row,
             note_scope=note_scope,
-            leads_map=leads_map,
+            accounts_map=accounts_map,
             contacts_map=contacts_map,
             deals_map=deals_map,
             user_map=user_map,
@@ -1140,7 +1163,7 @@ def hydrate_note_rows(connection: Any, rows: List[Dict[str, Any]], note_scope: O
 # Public service functions
 # -----------------------------
 
-def fetch_user_notes_list(
+def fetch_notes_list(
     client_database: str,
     note_scope: Optional[str] = None,
     page: int = 1,
@@ -1157,6 +1180,7 @@ def fetch_user_notes_list(
     offset = (page - 1) * per_page
 
     try:
+        note_scope = normalize_note_scope(note_scope)
         connection = get_client_connection(client_database)
         where_clause, params = build_where_clause(
             note_scope=note_scope,
@@ -1221,7 +1245,7 @@ def fetch_user_notes_list(
             connection.close()
 
 
-def fetch_user_note_detail(
+def fetch_note_detail(
     client_database: str,
     note_id: int,
 ) -> Optional[Dict[str, Any]]:

@@ -1,4 +1,4 @@
-# app/api/v1/endpoints/attachment.py
+# app/api/v1/endpoints/attachments.py
 
 from typing import Any, Dict, Optional
 
@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.response import success_response, error_response, current_utc_datetime
 from app.core.security import authenticate_request
-from app.services.attachment_service import (
+from app.services.attachments_service import (
     ALLOWED_ATTACHMENT_SCOPES,
     SCHEMA_VERSION,
     fetch_user_attachment_detail,
@@ -74,8 +74,9 @@ def _build_attachment_filter_params(
     name: Optional[str], attachment_name: Optional[str], originalname: Optional[str],
     attachmentname: Optional[str], filetype: Optional[str], filesize_min: Optional[str], filesize_max: Optional[str],
     activity_name: Optional[str], lead_id: Optional[str], account_id: Optional[str], customer_id: Optional[str],
-    company_id: Optional[str], lead_name: Optional[str], lead_city: Optional[str], lead_state: Optional[str],
-    lead_country: Optional[str], contact_id: Optional[str], contact_name: Optional[str], contact_email: Optional[str],
+    company_id: Optional[str], account_name: Optional[str], account_type: Optional[str], account_city: Optional[str],
+    account_state: Optional[str], account_country: Optional[str], lead_name: Optional[str], lead_type: Optional[str],
+    lead_city: Optional[str], lead_state: Optional[str], lead_country: Optional[str], contact_id: Optional[str], contact_name: Optional[str], contact_email: Optional[str],
     contact_phone: Optional[str], contact_role: Optional[str], deal_id: Optional[str], opportunity_id: Optional[str],
     deal_name: Optional[str], deal_status: Optional[str], deal_stage_id: Optional[str], deal_stage_title: Optional[str],
     owner: Optional[str], owner_name: Optional[str], created_by: Optional[str], created_by_name: Optional[str],
@@ -97,7 +98,13 @@ def _build_attachment_filter_params(
         account_id=account_id,
         customer_id=customer_id,
         company_id=company_id,
+        account_name=account_name,
+        account_type=account_type,
+        account_city=account_city,
+        account_state=account_state,
+        account_country=account_country,
         lead_name=lead_name,
+        lead_type=lead_type,
         lead_city=lead_city,
         lead_state=lead_state,
         lead_country=lead_country,
@@ -136,7 +143,7 @@ def _build_attachment_filter_params(
     )
 
 
-@router.get("/attachment")
+@router.get("/attachments")
 def get_user_attachments(
     auth_context: dict = Depends(authenticate_request),
     page: int = Query(default=1, ge=1),
@@ -158,7 +165,13 @@ def get_user_attachments(
     account_id: Optional[str] = Query(default=None),
     customer_id: Optional[str] = Query(default=None),
     company_id: Optional[str] = Query(default=None),
+    account_name: Optional[str] = Query(default=None),
+    account_type: Optional[str] = Query(default=None),
+    account_city: Optional[str] = Query(default=None),
+    account_state: Optional[str] = Query(default=None),
+    account_country: Optional[str] = Query(default=None),
     lead_name: Optional[str] = Query(default=None),
+    lead_type: Optional[str] = Query(default=None),
     lead_city: Optional[str] = Query(default=None),
     lead_state: Optional[str] = Query(default=None),
     lead_country: Optional[str] = Query(default=None),
@@ -198,8 +211,8 @@ def get_user_attachments(
     try:
         filter_params = _build_attachment_filter_params(
             name, attachment_name, originalname, attachmentname, filetype, filesize_min, filesize_max,
-            activity_name, lead_id, account_id, customer_id, company_id, lead_name, lead_city, lead_state,
-            lead_country, contact_id, contact_name, contact_email, contact_phone, contact_role, deal_id,
+            activity_name, lead_id, account_id, customer_id, company_id, account_name, account_type, account_city,
+            account_state, account_country, lead_name, lead_type, lead_city, lead_state, lead_country, contact_id, contact_name, contact_email, contact_phone, contact_role, deal_id,
             opportunity_id, deal_name, deal_status, deal_stage_id, deal_stage_title, owner, owner_name,
             created_by, created_by_name, modified_by, modified_by_name, created_date_from, created_date_to,
             modified_date_from, modified_date_to, startdate_from, startdate_to, enddate_from, enddate_to,
@@ -218,7 +231,7 @@ def get_user_attachments(
 
 
 
-@router.get("/attachment/{attachment_id:int}")
+@router.get("/attachments/{attachment_id:int}")
 def get_user_attachment_by_id(
     attachment_id: int,
     auth_context: dict = Depends(authenticate_request),
@@ -227,7 +240,7 @@ def get_user_attachment_by_id(
     Protected User Attachment detail API.
 
     URL:
-    /attachment/{attachment_id}
+    /attachments/{attachment_id}
     """
 
     try:
@@ -277,7 +290,7 @@ def get_user_attachment_by_id(
             ),
         )
 
-@router.get("/attachment/{attachment_scope}")
+@router.get("/attachments/{attachment_scope}")
 def get_user_attachments_by_scope(
     attachment_scope: str,
     auth_context: dict = Depends(authenticate_request),
@@ -300,7 +313,13 @@ def get_user_attachments_by_scope(
     account_id: Optional[str] = Query(default=None),
     customer_id: Optional[str] = Query(default=None),
     company_id: Optional[str] = Query(default=None),
+    account_name: Optional[str] = Query(default=None),
+    account_type: Optional[str] = Query(default=None),
+    account_city: Optional[str] = Query(default=None),
+    account_state: Optional[str] = Query(default=None),
+    account_country: Optional[str] = Query(default=None),
     lead_name: Optional[str] = Query(default=None),
+    lead_type: Optional[str] = Query(default=None),
     lead_city: Optional[str] = Query(default=None),
     lead_state: Optional[str] = Query(default=None),
     lead_country: Optional[str] = Query(default=None),
@@ -352,8 +371,8 @@ def get_user_attachments_by_scope(
 
         filter_params = _build_attachment_filter_params(
             name, attachment_name, originalname, attachmentname, filetype, filesize_min, filesize_max,
-            activity_name, lead_id, account_id, customer_id, company_id, lead_name, lead_city, lead_state,
-            lead_country, contact_id, contact_name, contact_email, contact_phone, contact_role, deal_id,
+            activity_name, lead_id, account_id, customer_id, company_id, account_name, account_type, account_city,
+            account_state, account_country, lead_name, lead_type, lead_city, lead_state, lead_country, contact_id, contact_name, contact_email, contact_phone, contact_role, deal_id,
             opportunity_id, deal_name, deal_status, deal_stage_id, deal_stage_title, owner, owner_name,
             created_by, created_by_name, modified_by, modified_by_name, created_date_from, created_date_to,
             modified_date_from, modified_date_to, startdate_from, startdate_to, enddate_from, enddate_to,
