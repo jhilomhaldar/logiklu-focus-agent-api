@@ -20,8 +20,8 @@ AUTH_TIMESTAMP_TOLERANCE_SECONDS = 300
 def get_api_environment() -> str:
     api_env = str(getattr(settings, "API_ENV", "production") or "production").strip().lower()
 
-    if api_env in ["local", "development", "dev"]:
-        return "local"
+    if api_env in ["development", "dev", "local"]:
+        return "development"
 
     if api_env == "sandbox":
         return "sandbox"
@@ -416,7 +416,10 @@ def fetch_api_client(api_key: str, api_environment: str) -> Optional[dict]:
     connection = None
     api_key_hash = hash_api_key(api_key)
 
-    if api_environment == "sandbox":
+    if api_environment in ["sandbox", "development"]:
+        # Development is internal/no-public-url. For legacy X-API-KEY calls,
+        # reuse sandbox API key columns but keep environment as development
+        # for JWT payloads and request logs.
         key_condition = """
             (
                 ac.sandbox_api_key = %s
