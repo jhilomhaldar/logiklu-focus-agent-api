@@ -105,9 +105,10 @@ def get_api_environment() -> str:
     Resolve the current API environment for request logging.
 
     Supported environments:
-    - production / prod / live
+    - development / dev / local
     - sandbox
     - staging
+    - production / prod / live
 
     Unknown values fall back to production so table selection always remains safe.
     """
@@ -115,6 +116,9 @@ def get_api_environment() -> str:
     environment = str(
         getattr(settings, "API_ENV", "production") or "production"
     ).strip().lower()
+
+    if environment in ["development", "dev", "local"]:
+        return "development"
 
     if environment in ["production", "prod", "live"]:
         return "production"
@@ -135,6 +139,9 @@ def get_log_table_name() -> str:
     """
 
     environment = get_api_environment()
+
+    if environment == "development":
+        return "lk_agent_api_request_logs_development"
 
     if environment == "sandbox":
         return "lk_agent_api_request_logs_sandbox"
