@@ -10,6 +10,7 @@ from app.db.master import get_master_connection
 
 from app.config import settings
 from app.core.security import decode_and_verify_jwt_token, build_auth_context_from_jwt_payload
+from app.services.api_usage_limit_service import finalize_api_usage_reservation
 
 
 MAX_BODY_LOG_LENGTH = 10000
@@ -341,13 +342,11 @@ async def api_request_logger_middleware(request: Request, call_next):
     if should_skip_api_log_path(path):
         return await call_next(request)
 
+    # Bearer requests can be resolved before route handling, which allows even
+    # invalid-route authenticated calls to be logged. X-API-KEY requests are
+    # resolved later inside endpoint dependencies, so we do not skip early when
+    # this is empty.
     auth_context = resolve_bearer_auth_context_for_logging(request)
-
-    if not auth_context:
-        # Usage logs are only for secured authenticated API calls with Bearer JWT.
-        # Public pages, OAuth token calls, browser pages, and unauthenticated hits
-        # are not inserted into lk_agent_api_request_logs*.
-        return await call_next(request)
 
     start_time = time.time()
     environment = get_api_environment()
@@ -393,23 +392,34 @@ async def api_request_logger_middleware(request: Request, call_next):
 
         auth_context = getattr(request.state, "auth_context", None) or auth_context
 
-        insert_api_request_log(
-            api_client_id=auth_context.get("api_client_id") if auth_context else None,
-            domain_id=auth_context.get("domain_id") if auth_context else None,
-            client_database=auth_context.get("client_database") if auth_context else "",
-            environment=environment,
-            api_key_prefix=get_jwt_api_key_prefix(auth_context or {}),
-            endpoint=path,
-            request_method=request.method,
-            ip_address=get_client_ip(request),
-            user_agent=request.headers.get("user-agent", ""),
-            request_params=safe_request_params(request),
-            request_body=request_body,
-            http_status_code=response_status_code,
-            response_status=response_status,
-            error_code=error_code,
-            error_message=error_message,
-            execution_time_ms=execution_time_ms,
+        # Only 2xx responses consume successful usage quota.
+        finalize_api_usage_reservation(
+            request=request,
+            success=(200 <= int(response_status_code or 0) <= 299),
         )
 
+        # Usage logs are only for secured authenticated API calls. Public pages,
+        # OAuth token calls, browser pages, and unauthenticated hits are not
+        # inserted into lk_agent_api_request_logs*.
+        if auth_context and auth_context.get("api_client_id") and auth_context.get("domain_id"):
+            insert_api_request_log(
+                api_client_id=auth_context.get("api_client_id"),
+                domain_id=auth_context.get("domain_id"),
+                client_database=auth_context.get("client_database") or "",
+                environment=environment,
+                api_key_prefix=get_jwt_api_key_prefix(auth_context or {}),
+                endpoint=path,
+                request_method=request.method,
+                ip_address=get_client_ip(request),
+                user_agent=request.headers.get("user-agent", ""),
+                request_params=safe_request_params(request),
+                request_body=request_body,
+                http_status_code=response_status_code,
+                response_status=response_status,
+                error_code=error_code,
+                error_message=error_message,
+                execution_time_ms=execution_time_ms,
+            )
+
     return response
+
