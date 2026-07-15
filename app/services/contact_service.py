@@ -6,6 +6,12 @@ from app.services.accounts_service import (
     normalize_contact_row,
     normalize_account_row,
     parse_json_value,
+    fetch_users,
+    fetch_account_assignments,
+    build_assigned_users,
+    build_account_activities,
+    get_user,
+    format_datetime,
 )
 
 
@@ -277,12 +283,327 @@ def build_contact_dynamic_filters(
     return where_clauses, params
 
 
-def normalize_contact_with_account(row: Dict[str, Any]) -> Dict[str, Any]:
-    contact = normalize_contact_row(row)
+def make_placeholders(values: List[Any]) -> str:
+    return ",".join(["%s"] * len(values))
 
-    contact["contact_type"] = row.get("contact_type")
 
-    account_row = {
+def to_int(value: Any) -> Optional[int]:
+    try:
+        if value is None or value == "":
+            return None
+        return int(value)
+    except Exception:
+        return None
+
+
+def unique_ints(values: List[Any]) -> List[int]:
+    output: List[int] = []
+    seen = set()
+
+    for value in values:
+        parsed = to_int(value)
+
+        if parsed is None or parsed <= 0 or parsed in seen:
+            continue
+
+        seen.add(parsed)
+        output.append(parsed)
+
+    return output
+
+
+def fetch_contact_activity_rows(
+    connection: Any,
+    contact_ids: List[int],
+) -> Dict[int, List[Dict[str, Any]]]:
+    """Fetch contact-linked notes, attachments and activities.
+
+    Mapping rule:
+    - lk_activity_contacts.contact_role = 'contact'
+    - lk_activity_contacts.contact_id = lk_central_contacts.contact_id
+    - lk_activity_schedule.activity_type decides note / attachment / activity
+    """
+    ids = unique_ints(contact_ids)
+
+    if not ids:
+        return {}
+
+    sql = f"""
+        SELECT
+            lac.contact_id,
+            las.activity_id,
+            las.activity_type,
+            las.activity_name,
+            las.activity_description,
+            las.startdate,
+            las.enddate,
+            las.activity_details,
+            las.owner,
+            las.created_by,
+            las.created_date,
+            las.modified_by,
+            las.modified_date,
+            las.status,
+            las.active_status
+        FROM lk_activity_contacts lac
+        INNER JOIN lk_activity_schedule las
+            ON las.activity_id = lac.activity_id
+        WHERE lac.contact_id IN ({make_placeholders(ids)})
+          AND lac.contact_role = 'contact'
+          AND lac.contact_id IS NOT NULL
+          AND lac.contact_id > 0
+          AND (las.active_status IS NULL OR las.active_status <> 'deleted')
+        ORDER BY lac.contact_id ASC, las.created_date ASC, las.activity_id ASC
+    """
+
+    output: Dict[int, List[Dict[str, Any]]] = {}
+
+    with connection.cursor() as cursor:
+        cursor.execute(sql, ids)
+        rows = cursor.fetchall()
+
+    for row in rows:
+        contact_id = to_int(row.get("contact_id"))
+
+        if contact_id is None:
+            continue
+
+        output.setdefault(contact_id, []).append(row)
+
+    return output
+
+
+
+
+def split_id_values(value: Any) -> List[int]:
+    if value is None:
+        return []
+
+    if isinstance(value, list):
+        return unique_ints(value)
+
+    value_string = str(value or "").strip()
+
+    if not value_string:
+        return []
+
+    try:
+        import json
+        parsed = json.loads(value_string)
+
+        if isinstance(parsed, list):
+            return unique_ints(parsed)
+    except Exception:
+        pass
+
+    cleaned = value_string.replace(" ", "")
+    return unique_ints([part for part in cleaned.split(",") if part])
+
+
+def fetch_contact_deal_rows(
+    connection: Any,
+    contact_ids: List[int],
+) -> Dict[int, List[Dict[str, Any]]]:
+    """Fetch deals linked to contacts.
+
+    Deal-contact rule:
+    - lk_opportunities.lead_contact_id = contact_id
+    - OR contact_id appears in lk_opportunities.contact_ids
+    """
+    ids = unique_ints(contact_ids)
+
+    if not ids:
+        return {}
+
+    find_conditions = []
+    find_params: List[Any] = []
+
+    for contact_id in ids:
+        find_conditions.append("FIND_IN_SET(%s, REPLACE(IFNULL(o.contact_ids, ''), ' ', '')) > 0")
+        find_params.append(str(contact_id))
+
+    sql = f"""
+        SELECT
+            o.opportunity_id AS deal_id,
+            o.lead_contact_id,
+            o.contact_ids,
+            o.lead_id,
+            o.opportunity_name AS deal_name,
+            o.opportunity_description AS deal_description,
+            o.opportunity_type AS deal_type,
+            o.closingdate AS closing_date,
+            o.owner,
+            o.created_by,
+            o.created_date,
+            o.modified_by,
+            o.modified_date,
+            o.status,
+            o.oportunity_status AS deal_status,
+            o.active_status,
+
+            lm.lead_id AS account_id,
+            lm.lead_name AS account_name,
+            lm.lead_type AS account_type,
+            lm.city AS account_city,
+            lm.state AS account_state,
+            lm.country AS account_country,
+
+            status_action.id AS deal_stage_id,
+            status_action.title AS deal_stage_title,
+            status_action.color AS deal_stage_color
+        FROM lk_opportunities o
+        LEFT JOIN lk_lead_master lm
+            ON lm.lead_id = o.lead_id
+        LEFT JOIN jos_setting_sales_executive_action status_action
+            ON status_action.id = o.opportunity_status_id
+           AND status_action.section = 'STATUS'
+        WHERE (
+                o.lead_contact_id IN ({make_placeholders(ids)})
+                OR ({" OR ".join(find_conditions)})
+              )
+          AND (o.active_status IS NULL OR o.active_status <> 'deleted')
+        ORDER BY o.created_date ASC, o.opportunity_id ASC
+    """
+
+    params: List[Any] = list(ids) + find_params
+    output: Dict[int, List[Dict[str, Any]]] = {}
+
+    with connection.cursor() as cursor:
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+
+    id_set = set(ids)
+
+    for row in rows:
+        linked_contact_ids: List[int] = []
+
+        lead_contact_id = to_int(row.get("lead_contact_id"))
+
+        if lead_contact_id is not None and lead_contact_id in id_set:
+            linked_contact_ids.append(lead_contact_id)
+
+        for linked_id in split_id_values(row.get("contact_ids")):
+            if linked_id in id_set:
+                linked_contact_ids.append(linked_id)
+
+        linked_contact_ids = unique_ints(linked_contact_ids)
+
+        for linked_id in linked_contact_ids:
+            output.setdefault(linked_id, []).append(row)
+
+    return output
+
+
+def build_deal_stage(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not row.get("deal_stage_id"):
+        return None
+
+    return {
+        "id": row.get("deal_stage_id"),
+        "title": row.get("deal_stage_title"),
+        "color": row.get("deal_stage_color"),
+    }
+
+
+def build_contact_deals(
+    rows: List[Dict[str, Any]],
+    user_map: Dict[int, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    deals: List[Dict[str, Any]] = []
+    seen = set()
+
+    for row in rows:
+        deal_id = to_int(row.get("deal_id"))
+
+        if deal_id is None or deal_id in seen:
+            continue
+
+        seen.add(deal_id)
+
+        account = None
+        if row.get("account_id"):
+            account = {
+                "account_id": row.get("account_id"),
+                "name": row.get("account_name"),
+                "account_type": row.get("account_type"),
+                "location": {
+                    "city": row.get("account_city"),
+                    "state": row.get("account_state"),
+                    "country": row.get("account_country"),
+                },
+            }
+
+        deals.append(
+            {
+                "deal_id": row.get("deal_id"),
+                "deal_name": row.get("deal_name"),
+                "deal_description": row.get("deal_description"),
+                "deal_temparature": row.get("deal_type"),
+                "account": account,
+                "deal_stage": build_deal_stage(row),
+                "status": row.get("status"),
+                "deal_status": row.get("deal_status"),
+                "closing_date": format_datetime(row.get("closing_date")),
+                "owner": get_user(user_map, row.get("owner")),
+                "created_by": get_user(user_map, row.get("created_by")),
+                "created_date": format_datetime(row.get("created_date")),
+                "modified_by": get_user(user_map, row.get("modified_by")),
+                "modified_date": format_datetime(row.get("modified_date")),
+                "active_status": row.get("active_status"),
+            }
+        )
+
+    return deals
+
+def collect_contact_related_user_ids(
+    rows: List[Dict[str, Any]],
+    assignments_map: Dict[int, List[Dict[str, Any]]],
+    contact_activity_map: Dict[int, List[Dict[str, Any]]],
+    contact_deal_map: Optional[Dict[int, List[Dict[str, Any]]]] = None,
+) -> List[Any]:
+    user_ids: List[Any] = []
+
+    for row in rows:
+        user_ids.extend([
+            row.get("owner"),
+            row.get("created_by"),
+            row.get("modified_by"),
+            row.get("account_owner"),
+            row.get("account_created_by"),
+            row.get("account_modified_by"),
+        ])
+
+    for assignments in assignments_map.values():
+        for assignment in assignments:
+            user_ids.extend([
+                assignment.get("user_id"),
+                assignment.get("assign_by"),
+                assignment.get("added_by"),
+            ])
+
+    for activities in contact_activity_map.values():
+        for activity in activities:
+            user_ids.extend([
+                activity.get("owner"),
+                activity.get("created_by"),
+                activity.get("modified_by"),
+            ])
+
+    contact_deal_map = contact_deal_map or {}
+
+    for deals in contact_deal_map.values():
+        for deal in deals:
+            user_ids.extend([
+                deal.get("owner"),
+                deal.get("created_by"),
+                deal.get("modified_by"),
+            ])
+
+    return user_ids
+
+
+def build_account_row_from_contact(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
         "account_id": row.get("account_id"),
         "account_name": row.get("account_name"),
         "lead_segment": row.get("account_lead_segment"),
@@ -315,20 +636,69 @@ def normalize_contact_with_account(row: Dict[str, Any]) -> Dict[str, Any]:
         "project_startdate": row.get("account_project_startdate"),
         "project_enddate": row.get("account_project_enddate"),
         "source_details": row.get("account_source_details"),
+        "owner": row.get("account_owner"),
         "owner_first_name": row.get("account_owner_first_name"),
         "owner_last_name": row.get("account_owner_last_name"),
         "owner_email": row.get("account_owner_email"),
+        "created_by": row.get("account_created_by"),
         "created_by_first_name": row.get("account_created_by_first_name"),
         "created_by_last_name": row.get("account_created_by_last_name"),
         "created_by_email": row.get("account_created_by_email"),
         "created_date": row.get("account_created_date"),
+        "modified_by": row.get("account_modified_by"),
         "modified_by_first_name": row.get("account_modified_by_first_name"),
         "modified_by_last_name": row.get("account_modified_by_last_name"),
         "modified_by_email": row.get("account_modified_by_email"),
         "modified_date": row.get("account_modified_date"),
     }
 
-    contact["account"] = normalize_account_row(account_row) if row.get("account_id") else None
+
+def normalize_contact_with_account(
+    row: Dict[str, Any],
+    user_map: Dict[int, Dict[str, Any]],
+    assignments_map: Optional[Dict[int, List[Dict[str, Any]]]] = None,
+    contact_activity_map: Optional[Dict[int, List[Dict[str, Any]]]] = None,
+    contact_deal_map: Optional[Dict[int, List[Dict[str, Any]]]] = None,
+) -> Dict[str, Any]:
+    contact = normalize_contact_row(row, user_map)
+
+    # Replace the old plain contact notes column with the CRM activity notes array.
+    contact.pop("notes", None)
+
+    contact_id = to_int(row.get("contact_id"))
+    account_id = to_int(row.get("account_id"))
+
+    assignments_map = assignments_map or {}
+    contact_activity_map = contact_activity_map or {}
+    contact_deal_map = contact_deal_map or {}
+
+    contact["contact_type"] = row.get("contact_type")
+    contact["account"] = normalize_account_row(build_account_row_from_contact(row)) if account_id else None
+
+    assignments = assignments_map.get(account_id, []) if account_id else []
+    assigned = build_assigned_users(
+        row={"owner": row.get("account_owner") or row.get("owner")},
+        assignments=assignments,
+        user_map=user_map,
+    )
+
+    contact["assigned"] = assigned
+
+    if contact.get("account"):
+        contact["account"]["assigned"] = assigned
+
+    related = build_account_activities(
+        contact_activity_map.get(contact_id, []) if contact_id else [],
+        user_map,
+    )
+
+    contact["notes"] = related.get("notes", [])
+    contact["attachments"] = related.get("attachments", [])
+    contact["activities"] = related.get("activities", [])
+    contact["deals"] = build_contact_deals(
+        contact_deal_map.get(contact_id, []) if contact_id else [],
+        user_map,
+    )
 
     return contact
 
@@ -536,6 +906,9 @@ def fetch_contacts(
                     lm.source_details AS account_source_details,
                     lm.created_date AS account_created_date,
                     lm.modified_date AS account_modified_date,
+                    lm.owner AS account_owner,
+                    lm.created_by AS account_created_by,
+                    lm.modified_by AS account_modified_by,
 
                     account_owner.first_name AS account_owner_first_name,
                     account_owner.last_name AS account_owner_last_name,
@@ -586,12 +959,41 @@ def fetch_contacts(
             cursor.execute(sql, tuple(params))
             rows = cursor.fetchall()
 
-        contacts = [normalize_contact_with_account(row) for row in rows]
-
         contact_ids = [
-            int(contact["contact_id"])
-            for contact in contacts
-            if contact.get("contact_id")
+            int(row.get("contact_id"))
+            for row in rows
+            if row.get("contact_id") is not None
+        ]
+
+        account_ids = [
+            int(row.get("account_id"))
+            for row in rows
+            if row.get("account_id") is not None
+        ]
+
+        assignments_map = fetch_account_assignments(connection, account_ids)
+        contact_activity_map = fetch_contact_activity_rows(connection, contact_ids)
+        contact_deal_map = fetch_contact_deal_rows(connection, contact_ids)
+
+        user_map = fetch_users(
+            connection,
+            collect_contact_related_user_ids(
+                rows=rows,
+                assignments_map=assignments_map,
+                contact_activity_map=contact_activity_map,
+                contact_deal_map=contact_deal_map,
+            ),
+        )
+
+        contacts = [
+            normalize_contact_with_account(
+                row=row,
+                user_map=user_map,
+                assignments_map=assignments_map,
+                contact_activity_map=contact_activity_map,
+                contact_deal_map=contact_deal_map,
+            )
+            for row in rows
         ]
 
         dynamic_details = fetch_contact_dynamic_details(
@@ -791,6 +1193,9 @@ def fetch_contact_by_id(
                     lm.source_details AS account_source_details,
                     lm.created_date AS account_created_date,
                     lm.modified_date AS account_modified_date,
+                    lm.owner AS account_owner,
+                    lm.created_by AS account_created_by,
+                    lm.modified_by AS account_modified_by,
 
                     account_owner.first_name AS account_owner_first_name,
                     account_owner.last_name AS account_owner_last_name,
@@ -843,11 +1248,34 @@ def fetch_contact_by_id(
         if not row:
             return None
 
-        contact = normalize_contact_with_account(row)
+        contact_ids = [contact_id]
+        account_ids = [int(row.get("account_id"))] if row.get("account_id") is not None else []
+
+        assignments_map = fetch_account_assignments(connection, account_ids)
+        contact_activity_map = fetch_contact_activity_rows(connection, contact_ids)
+        contact_deal_map = fetch_contact_deal_rows(connection, contact_ids)
+
+        user_map = fetch_users(
+            connection,
+            collect_contact_related_user_ids(
+                rows=[row],
+                assignments_map=assignments_map,
+                contact_activity_map=contact_activity_map,
+                contact_deal_map=contact_deal_map,
+            ),
+        )
+
+        contact = normalize_contact_with_account(
+            row=row,
+            user_map=user_map,
+            assignments_map=assignments_map,
+            contact_activity_map=contact_activity_map,
+            contact_deal_map=contact_deal_map,
+        )
 
         dynamic_details = fetch_contact_dynamic_details(
             client_database=client_database,
-            contact_ids=[contact_id],
+            contact_ids=contact_ids,
         )
 
         contact["dynamic_fields"] = dynamic_details.get(contact_id, {})
