@@ -12,6 +12,7 @@ from fastapi import Request, HTTPException, status
 from app.config import settings
 from app.db.master import get_master_connection
 from app.core.response import error_response
+from app.services.api_usage_limit_service import check_and_reserve_api_usage
 
 
 AUTH_TIMESTAMP_TOLERANCE_SECONDS = 300
@@ -393,6 +394,8 @@ def get_api_client_select_sql(where_condition: str) -> str:
             ac.permissions,
             ac.status AS api_status,
             ac.rate_limit_per_minute,
+            ac.production_monthly_success_limit,
+            ac.production_total_success_limit,
 
             d.account_name,
             d.websitename,
@@ -538,6 +541,8 @@ def build_auth_context_from_api_client(api_client: dict, api_environment: str, a
         "permissions": normalize_permissions(api_client.get("permissions")),
         "scope": extract_scope_from_permissions(api_client.get("permissions")),
         "rate_limit_per_minute": api_client.get("rate_limit_per_minute"),
+        "production_monthly_success_limit": api_client.get("production_monthly_success_limit"),
+        "production_total_success_limit": api_client.get("production_total_success_limit"),
     }
 
 
@@ -560,6 +565,8 @@ def build_auth_context_from_jwt_payload(payload: dict) -> dict:
         "permissions": payload.get("permissions") or {},
         "scope": payload.get("scope") or "",
         "rate_limit_per_minute": payload.get("rate_limit_per_minute"),
+        "production_monthly_success_limit": payload.get("production_monthly_success_limit"),
+        "production_total_success_limit": payload.get("production_total_success_limit"),
     }
 
 
@@ -651,6 +658,8 @@ def issue_client_credentials_token(
         "permissions": normalize_permissions(api_client.get("permissions")),
         "scope": scope,
         "rate_limit_per_minute": api_client.get("rate_limit_per_minute"),
+        "production_monthly_success_limit": api_client.get("production_monthly_success_limit"),
+        "production_total_success_limit": api_client.get("production_total_success_limit"),
         "allowed_ips": api_client.get("allowed_ips"),
     }
 
@@ -711,6 +720,12 @@ async def authenticate_bearer_request(request: Request, token: str) -> dict:
     auth_context = build_auth_context_from_jwt_payload(payload)
 
     request.state.auth_context = auth_context
+
+    check_and_reserve_api_usage(
+        request=request,
+        auth_context=auth_context,
+        api_client=None,
+    )
 
     return auth_context
 
@@ -801,6 +816,12 @@ async def authenticate_api_key_request(request: Request) -> dict:
     )
 
     request.state.auth_context = auth_context
+
+    check_and_reserve_api_usage(
+        request=request,
+        auth_context=auth_context,
+        api_client=api_client,
+    )
 
     return auth_context
 
