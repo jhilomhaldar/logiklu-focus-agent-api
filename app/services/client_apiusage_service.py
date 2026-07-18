@@ -44,6 +44,10 @@ ENVIRONMENTS = {
     },
 }
 
+ENVIRONMENT_LIMIT_TABLE = "lk_api_usage_environment_limit_settings"
+COUNTER_TABLE = "lk_api_usage_counters"
+
+
 PUBLIC_REPORT_PATH_PREFIXES = (
     "/client/apiusage",
     "/instructions",
@@ -326,6 +330,223 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _limit_value(value: Any) -> Optional[int]:
+    """Return None for unlimited / not configured; otherwise integer limit."""
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ["", "null", "none", "unlimited", "infinite", "infinity", "inf", "-1"]:
+            return None
+        try:
+            limit = int(float(text))
+        except Exception:
+            return None
+    else:
+        try:
+            limit = int(value)
+        except Exception:
+            return None
+
+    if limit < 0:
+        return None
+
+    return limit
+
+
+def _fmt_limit(value: Optional[int]) -> str:
+    if value is None:
+        return "Unlimited"
+    return _fmt_num(value)
+
+
+def _counter_period_key(period_type: str, tz_offset_minutes: int) -> str:
+    now = _local_now(tz_offset_minutes)
+
+    if period_type == "daily":
+        return now.strftime("%Y-%m-%d")
+
+    if period_type == "monthly":
+        return now.strftime("%Y-%m")
+
+    return "ALL"
+
+
+def _fetch_counter_success_count(cursor, env: str, client: Dict[str, Any], period_type: str, period_key: str) -> int:
+    row = _fetch_one(cursor, f"""
+        SELECT success_count
+        FROM `{COUNTER_TABLE}`
+        WHERE environment = %s
+          AND oauth_client_id = %s
+          AND period_type = %s
+          AND period_key = %s
+        LIMIT 1
+    """, (
+        env,
+        client.get("oauth_client_id"),
+        period_type,
+        period_key,
+    )) or {}
+
+    return _safe_int(row.get("success_count"))
+
+
+def _fetch_environment_limit_settings(cursor, env: str) -> Dict[str, Optional[int]]:
+    if env not in ["sandbox", "staging"]:
+        return {"daily": None, "total": None}
+
+    row = _fetch_one(cursor, f"""
+        SELECT
+            daily_success_limit,
+            total_success_limit
+        FROM `{ENVIRONMENT_LIMIT_TABLE}`
+        WHERE environment = %s
+          AND active_status = 'active'
+        LIMIT 1
+    """, (env,)) or {}
+
+    return {
+        "daily": _limit_value(row.get("daily_success_limit")),
+        "total": _limit_value(row.get("total_success_limit")),
+    }
+
+
+def _usage_percent(used: int, limit: Optional[int]) -> float:
+    if limit is None or limit <= 0:
+        return 0.0
+    return min((float(used) / float(limit)) * 100.0, 9999.0)
+
+
+def _build_usage_limit_summary(cursor, client: Dict[str, Any], env: str, tz_offset_minutes: int) -> Dict[str, Any]:
+    """
+    Build the new limit summary for the API usage dashboard.
+
+    Sandbox/Staging:
+    - daily and total limits come from lk_api_usage_environment_limit_settings.
+
+    Production:
+    - monthly and optional total limits come from lk_agent_api_clients.
+    """
+    daily_key = _counter_period_key("daily", tz_offset_minutes)
+    monthly_key = _counter_period_key("monthly", tz_offset_minutes)
+    total_key = "ALL"
+
+    daily_limit: Optional[int] = None
+    monthly_limit: Optional[int] = None
+    total_limit: Optional[int] = None
+
+    daily_used = 0
+    monthly_used = 0
+    total_used = 0
+
+    if env in ["sandbox", "staging"]:
+        env_limits = _fetch_environment_limit_settings(cursor, env)
+        daily_limit = env_limits.get("daily")
+        total_limit = env_limits.get("total")
+
+        daily_used = _fetch_counter_success_count(cursor, env, client, "daily", daily_key)
+        total_used = _fetch_counter_success_count(cursor, env, client, "total", total_key)
+
+        # The main dashboard usage card should prioritize lifetime limit because
+        # total exhaustion permanently blocks the environment for that client.
+        if total_limit is not None:
+            active_limit = total_limit
+            active_used = total_used
+            active_limit_type = "total"
+            active_limit_label = "Total Usage Limit"
+        elif daily_limit is not None:
+            active_limit = daily_limit
+            active_used = daily_used
+            active_limit_type = "daily"
+            active_limit_label = "Daily Usage Limit"
+        else:
+            active_limit = None
+            active_used = 0
+            active_limit_type = "unlimited"
+            active_limit_label = "Usage Limit"
+
+    elif env == "production":
+        monthly_limit = _limit_value(client.get("production_monthly_success_limit"))
+        total_limit = _limit_value(client.get("production_total_success_limit"))
+
+        monthly_used = _fetch_counter_success_count(cursor, env, client, "monthly", monthly_key)
+        total_used = _fetch_counter_success_count(cursor, env, client, "total", total_key)
+
+        # Production is billed monthly, so the main dashboard usage card should
+        # show the monthly usage first. Total is optional.
+        if monthly_limit is not None:
+            active_limit = monthly_limit
+            active_used = monthly_used
+            active_limit_type = "monthly"
+            active_limit_label = "Monthly Usage Limit"
+        elif total_limit is not None:
+            active_limit = total_limit
+            active_used = total_used
+            active_limit_type = "total"
+            active_limit_label = "Total Usage Limit"
+        else:
+            active_limit = None
+            active_used = 0
+            active_limit_type = "unlimited"
+            active_limit_label = "Usage Limit"
+
+    else:
+        active_limit = None
+        active_used = 0
+        active_limit_type = "unlimited"
+        active_limit_label = "Usage Limit"
+
+    active_percent = _usage_percent(active_used, active_limit)
+
+    return {
+        "environment": env,
+        "active_limit_type": active_limit_type,
+        "active_limit_label": active_limit_label,
+        "active_limit": active_limit,
+        "active_limit_text": _fmt_limit(active_limit),
+        "active_used": active_used,
+        "active_used_text": _fmt_num(active_used),
+        "active_remaining": None if active_limit is None else max(active_limit - active_used, 0),
+        "active_remaining_text": "Unlimited" if active_limit is None else _fmt_num(max(active_limit - active_used, 0)),
+        "active_percent": active_percent,
+        "active_percent_text": _fmt_pct(active_percent),
+        "daily": {
+            "period_key": daily_key,
+            "limit": daily_limit,
+            "limit_text": _fmt_limit(daily_limit),
+            "used": daily_used,
+            "used_text": _fmt_num(daily_used),
+            "remaining": None if daily_limit is None else max(daily_limit - daily_used, 0),
+            "remaining_text": "Unlimited" if daily_limit is None else _fmt_num(max(daily_limit - daily_used, 0)),
+            "percent": _usage_percent(daily_used, daily_limit),
+            "percent_text": _fmt_pct(_usage_percent(daily_used, daily_limit)),
+        },
+        "monthly": {
+            "period_key": monthly_key,
+            "limit": monthly_limit,
+            "limit_text": _fmt_limit(monthly_limit),
+            "used": monthly_used,
+            "used_text": _fmt_num(monthly_used),
+            "remaining": None if monthly_limit is None else max(monthly_limit - monthly_used, 0),
+            "remaining_text": "Unlimited" if monthly_limit is None else _fmt_num(max(monthly_limit - monthly_used, 0)),
+            "percent": _usage_percent(monthly_used, monthly_limit),
+            "percent_text": _fmt_pct(_usage_percent(monthly_used, monthly_limit)),
+        },
+        "total": {
+            "period_key": total_key,
+            "limit": total_limit,
+            "limit_text": _fmt_limit(total_limit),
+            "used": total_used,
+            "used_text": _fmt_num(total_used),
+            "remaining": None if total_limit is None else max(total_limit - total_used, 0),
+            "remaining_text": "Unlimited" if total_limit is None else _fmt_num(max(total_limit - total_used, 0)),
+            "percent": _usage_percent(total_used, total_limit),
+            "percent_text": _fmt_pct(_usage_percent(total_used, total_limit)),
+        },
+    }
+
+
 def _fmt_num(value: Any) -> str:
     try:
         return f"{int(round(float(value))):,}"
@@ -513,6 +734,8 @@ def _resolve_client(cursor, oauth_client_id: str) -> Optional[Dict[str, Any]]:
             staging_api_key,
             production_api_key,
             monthly_quota,
+            production_monthly_success_limit,
+            production_total_success_limit,
             rate_limit,
             rate_limit_per_minute,
             status
@@ -1550,8 +1773,13 @@ def _build_environment_report(cursor, client: Dict[str, Any], env: str, range_ke
     start_dt, end_dt = _range_dates(range_key, date_from, date_to, timezone_offset_minutes)
     summary = _summary(cursor, table, client, start_dt, end_dt)
     month_used = _month_used(cursor, table, client, timezone_offset_minutes)
+    limit_summary = _build_usage_limit_summary(cursor, client, env, timezone_offset_minutes)
 
-    monthly_quota = _safe_float(client.get("monthly_quota"), 0.0)
+    # Keep old keys like quota/used for backward compatibility with the existing
+    # HTML renderer, but feed them from the new limit source.
+    monthly_quota = _safe_float(limit_summary.get("active_limit"), 0.0)
+    active_limit = limit_summary.get("active_limit")
+    active_used = _safe_int(limit_summary.get("active_used"))
     rate_limit = _safe_float(client.get("rate_limit"), 0.0)
     selected_month_key = _normalize_month_key(monthly_month, timezone_offset_minutes)
     monthly_summary = _month_summary(cursor, table, client, selected_month_key, monthly_quota, timezone_offset_minutes)
@@ -1588,17 +1816,17 @@ def _build_environment_report(cursor, client: Dict[str, Any], env: str, range_ke
     total = summary["total"]
     error_calls = summary["error_calls"]
 
-    if monthly_quota:
-        quota_pct = month_used / monthly_quota * 100.0
+    if active_limit:
+        quota_pct = _usage_percent(active_used, _safe_int(active_limit))
         if quota_pct >= 90:
-            suggestion = "Quota is near limit. Prepare additional quota or reduce repeated calls."
+            suggestion = "Usage limit is near exhaustion. Increase the limit or reduce repeated successful calls."
         elif quota_pct >= 70:
-            suggestion = "Show a soft warning and review repeated API calls."
+            suggestion = "Usage limit is above 70%. Review usage before it reaches the blocking threshold."
         else:
-            suggestion = "Usage is within the configured quota."
+            suggestion = "Usage is within the configured limit."
         projected_text = _fmt_num(projected) + " calls"
     else:
-        suggestion = "Monthly quota is not configured yet. Usage is shown without limit warning."
+        suggestion = "Usage limit is not configured or is unlimited for this environment."
         projected_text = "Not available"
 
     return {
@@ -1614,7 +1842,27 @@ def _build_environment_report(cursor, client: Dict[str, Any], env: str, range_ke
         "status": env_conf["status"],
         "apiKey": _env_api_key(client, env),
         "quota": monthly_quota,
-        "used": month_used,
+        "used": active_used,
+        "quotaLabel": limit_summary.get("active_limit_label"),
+        "quotaType": limit_summary.get("active_limit_type"),
+        "quotaText": limit_summary.get("active_limit_text"),
+        "quotaUsedText": limit_summary.get("active_used_text"),
+        "quotaRemainingText": limit_summary.get("active_remaining_text"),
+        "quotaPercent": limit_summary.get("active_percent"),
+        "quotaPercentText": limit_summary.get("active_percent_text"),
+        "limitSummary": limit_summary,
+        "dailyLimit": limit_summary.get("daily", {}).get("limit"),
+        "dailyUsed": limit_summary.get("daily", {}).get("used"),
+        "dailyLimitText": limit_summary.get("daily", {}).get("limit_text"),
+        "dailyUsedText": limit_summary.get("daily", {}).get("used_text"),
+        "monthlyLimit": limit_summary.get("monthly", {}).get("limit"),
+        "monthlyUsed": limit_summary.get("monthly", {}).get("used"),
+        "monthlyLimitText": limit_summary.get("monthly", {}).get("limit_text"),
+        "monthlyUsedText": limit_summary.get("monthly", {}).get("used_text"),
+        "totalLimit": limit_summary.get("total", {}).get("limit"),
+        "totalUsed": limit_summary.get("total", {}).get("used"),
+        "totalLimitText": limit_summary.get("total", {}).get("limit_text"),
+        "totalUsedText": limit_summary.get("total", {}).get("used_text"),
         "rateLimit": (str(int(rate_limit)) + "/min") if rate_limit else "Not Set",
         "currentMinute": str(_current_minute_count(cursor, table, client)),
         "totalCalls": _fmt_num(total),
