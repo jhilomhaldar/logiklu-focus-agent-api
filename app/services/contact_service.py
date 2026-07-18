@@ -655,11 +655,14 @@ def build_account_row_from_contact(row: Dict[str, Any]) -> Dict[str, Any]:
 
 def normalize_contact_with_account(
     row: Dict[str, Any],
-    user_map: Dict[int, Dict[str, Any]],
+    user_map: Optional[Dict[int, Dict[str, Any]]] = None,
     assignments_map: Optional[Dict[int, List[Dict[str, Any]]]] = None,
     contact_activity_map: Optional[Dict[int, List[Dict[str, Any]]]] = None,
     contact_deal_map: Optional[Dict[int, List[Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
+    # Keep this optional for backward compatibility with any old caller that still
+    # passes only row. Full list/detail calls pass the real user_map below.
+    user_map = user_map or {}
     contact = normalize_contact_row(row, user_map)
 
     # Replace the old plain contact notes column with the CRM activity notes array.
