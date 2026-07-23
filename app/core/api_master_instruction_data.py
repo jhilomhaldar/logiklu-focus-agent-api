@@ -1,11 +1,11 @@
-# Auto-generated LogiKlu API master instruction data with Activities and enriched Contacts.
+# Auto-generated LogiKlu API master instruction data with Focus Current Report.
 # Replace app/core/api_master_instruction_data.py with this file.
 
 API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
- 'subtitle': 'Internal developer guide for LogiKlu API, including Focus Account Intelligence, Focus Contacts, '
-             'Campaigns, Leadforms, Users, Accounts, Contacts, Deals, Activities, Notes, Attachments, OAuth/JWT, '
-             'examples, filters, and error behavior, including submitted contact search for Leadforms, Users, and '
-             'Roles APIs.',
+ 'subtitle': 'Internal developer guide for LogiKlu API, including Focus Account Intelligence, Focus Contacts, Focus '
+             'Current Report, Campaigns, Leadforms, Users, Accounts, Contacts, Deals, Activities, Notes, Attachments, '
+             'OAuth/JWT, examples, filters, and error behavior, including submitted contact search for Leadforms, '
+             'Users, and Roles APIs.',
  'base_url': 'https://api.logiklu.com',
  'sandbox_base_url': 'https://sandboxapi.logiklu.com',
  'local_base_url': 'http://127.0.0.1:8000',
@@ -274,7 +274,24 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
            {'title': 'Contacts deals rule',
             'description': 'Contact deals are resolved from lk_opportunities where lead_contact_id equals the '
                            'contact_id or the contact_id appears in lk_opportunities.contact_ids. The response exposes '
-                           'these under the contact-level deals array using deal naming, not opportunity naming.'}],
+                           'these under the contact-level deals array using deal naming, not opportunity naming.'},
+           {'title': 'Focus Report endpoint rule',
+            'description': 'The Focus Current Report API uses one clean route: GET /focus/report fetches the current '
+                           'report and POST /focus/report replaces it. Do not use /focus/update-report or '
+                           '/focus/update-current-report.'},
+           {'title': 'Focus Report replacement rule',
+            'description': 'POST /focus/report stores only one current Agentic AI report. It replaces the previous '
+                           'data in lk_focus_agent_report_master, lk_focus_agent_report_priority_account, and '
+                           'lk_focus_agent_report_contact_interaction for the authenticated client database.'},
+           {'title': 'Focus Report account source rule',
+            'description': 'priority_accounts[].account_id is the CRM account ID and maps to lead_id in old Focus '
+                           'report tables. Source evidence is stored separately under the source object and may '
+                           'reference lk_focus_report_company_log.'},
+           {'title': 'Focus Report contacts rule',
+            'description': 'contacts are posted as interacted contacts by account. GET /focus/report returns '
+                           'interacted_contacts as a flat list and contacts_by_account grouped by account_id.'},
+           {'title': 'Focus Report schema version',
+            'description': 'GET and POST /focus/report use schema_version logiklu_focus_agent_report.v1.'}],
  'sections': [{'id': 'authentication',
                'title': 'OAuth / JWT Authentication',
                'description': 'Generate a short-lived access token using /oauth/token. Then call protected APIs using '
@@ -1540,6 +1557,597 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                                                                                                                     '21:35:10',
                                                                                                             'last_interaction_at': '2026-06-26 '
                                                                                                                                    '21:35:10'}}}}}]},
+              {'id': 'focus-report',
+               'title': 'Focus Current Report',
+               'description': 'Use Focus Current Report APIs to let Agentic AI replace the latest prepared Focus '
+                              'report and to let the frontend fetch the current prepared report. Both read and write '
+                              'operations use the same clean path: /focus/report.',
+               'endpoints': [{'id': 'focus-report-get-current',
+                              'title': 'Get Current Focus Report',
+                              'method': 'GET',
+                              'path': '/focus/report',
+                              'purpose': 'Fetch the currently stored Agentic AI Focus report. The response includes '
+                                         'report-level executive snapshot, buyer-intent snapshot, priority accounts, '
+                                         'interacted contacts, and contacts grouped by account.',
+                              'auth_type': 'bearer',
+                              'request_type': 'None',
+                              'parameters': [],
+                              'examples': [{'title': 'Fetch current report',
+                                            'description': 'Return the latest current Agentic AI Focus report for the '
+                                                           'authenticated client.',
+                                            'path': '/focus/report',
+                                            'query': {}}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'Focus report fetched successfully',
+                                                   'meta': {'generated_at': '2026-07-23T11:30:00+00:00',
+                                                            'mode': 'protected',
+                                                            'schema_version': 'logiklu_focus_agent_report.v1'},
+                                                   'data': {'report': {'schema_version': 'logiklu_focus_agent_report.v1',
+                                                                       'agent_report_id': 1,
+                                                                       'source_report_id': 24,
+                                                                       'report_uid': 'FR202607230202057751',
+                                                                       'report_batch_uid': 'FB202607230202053780',
+                                                                       'executive_snapshot': {'summary_bullets': ['10 '
+                                                                                                                  'companies '
+                                                                                                                  'showed '
+                                                                                                                  'high '
+                                                                                                                  'priority '
+                                                                                                                  'engagement '
+                                                                                                                  'signals.',
+                                                                                                                  '2 '
+                                                                                                                  'companies '
+                                                                                                                  'showed '
+                                                                                                                  'high '
+                                                                                                                  'interest '
+                                                                                                                  'engagement '
+                                                                                                                  'signals.',
+                                                                                                                  'LKU '
+                                                                                                                  ': '
+                                                                                                                  '3D '
+                                                                                                                  'Sensing '
+                                                                                                                  'Technology '
+                                                                                                                  'Solutions '
+                                                                                                                  'and '
+                                                                                                                  'NanoResolution '
+                                                                                                                  'MRS '
+                                                                                                                  'Sensor '
+                                                                                                                  'were '
+                                                                                                                  'the '
+                                                                                                                  'most '
+                                                                                                                  'visited '
+                                                                                                                  'pages '
+                                                                                                                  'during '
+                                                                                                                  'the '
+                                                                                                                  'reporting '
+                                                                                                                  'period.',
+                                                                                                                  '73 '
+                                                                                                                  'companies '
+                                                                                                                  'returned '
+                                                                                                                  'during '
+                                                                                                                  'the '
+                                                                                                                  'reporting '
+                                                                                                                  'period.'],
+                                                                                              'high_interest_company_count': 2,
+                                                                                              'high_priority_company_count': 10},
+                                                                       'buyer_intent_snapshot': {'start_date': '2026-06-24',
+                                                                                                 'end_date': '2026-07-23',
+                                                                                                 'dataset_period': 30,
+                                                                                                 'summary_bullets': ['Measurable '
+                                                                                                                     'Interests '
+                                                                                                                     ': '
+                                                                                                                     '136 '
+                                                                                                                     'companies '
+                                                                                                                     'compared.',
+                                                                                                                     'Total '
+                                                                                                                     'High '
+                                                                                                                     'Priority '
+                                                                                                                     'marked '
+                                                                                                                     'companies '
+                                                                                                                     ': '
+                                                                                                                     '10.',
+                                                                                                                     'Activity '
+                                                                                                                     'Windows '
+                                                                                                                     ': '
+                                                                                                                     '30 '
+                                                                                                                     'Days '
+                                                                                                                     '(2026-06-24 '
+                                                                                                                     'to '
+                                                                                                                     '2026-07-23)'],
+                                                                                                 'activity_window_text': 'Activity '
+                                                                                                                         'Windows '
+                                                                                                                         ': '
+                                                                                                                         '30 '
+                                                                                                                         'Days '
+                                                                                                                         '(2026-06-24 '
+                                                                                                                         'to '
+                                                                                                                         '2026-07-23)',
+                                                                                                 'measurable_interests': 136,
+                                                                                                 'high_priority_company_count': 10},
+                                                                       'priority_account_count': 1,
+                                                                       'interacted_contact_count': 1,
+                                                                       'priority_accounts': [{'agent_report_account_id': 1,
+                                                                                              'account_id': 1094,
+                                                                                              'priority_rank': 1,
+                                                                                              'account': {'account_id': 1094,
+                                                                                                          'name': 'LogiKlu',
+                                                                                                          'website': 'www.lkw.com',
+                                                                                                          'location': {'city': '',
+                                                                                                                       'state': '',
+                                                                                                                       'country': ''},
+                                                                                                          'snapshot': {}},
+                                                                                              'source': {'source_company_log_id': 221,
+                                                                                                         'source_type': 'focus_report_company_log',
+                                                                                                         'source_summary': 'Source '
+                                                                                                                           'generated '
+                                                                                                                           'from '
+                                                                                                                           'Focus '
+                                                                                                                           'report '
+                                                                                                                           'company '
+                                                                                                                           'log '
+                                                                                                                           'and '
+                                                                                                                           'posted '
+                                                                                                                           'Agentic '
+                                                                                                                           'AI '
+                                                                                                                           'explanation.',
+                                                                                                         'source_json': {}},
+                                                                                              'final_explanation': {'engagement_pattern': [{'label': 'Conversion '
+                                                                                                                                                     'Interaction',
+                                                                                                                                            'explanation': 'The '
+                                                                                                                                                           'account '
+                                                                                                                                                           'submitted '
+                                                                                                                                                           'the '
+                                                                                                                                                           'Try '
+                                                                                                                                                           'LogiKlu '
+                                                                                                                                                           'form '
+                                                                                                                                                           'and '
+                                                                                                                                                           'downloaded '
+                                                                                                                                                           'ETT '
+                                                                                                                                                           'Proposal '
+                                                                                                                                                           'during '
+                                                                                                                                                           'the '
+                                                                                                                                                           'reporting '
+                                                                                                                                                           'period.'}],
+                                                                                                                    'why_company_matters': ['Submitted '
+                                                                                                                                            'Try '
+                                                                                                                                            'LogiKlu '
+                                                                                                                                            'form.',
+                                                                                                                                            'Downloaded '
+                                                                                                                                            'ETT '
+                                                                                                                                            'Proposal.',
+                                                                                                                                            'Returned '
+                                                                                                                                            'across '
+                                                                                                                                            'multiple '
+                                                                                                                                            'visits.'],
+                                                                                                                    'account_insight_summary': 'The '
+                                                                                                                                               'account '
+                                                                                                                                               'submitted '
+                                                                                                                                               'the '
+                                                                                                                                               'Try '
+                                                                                                                                               'LogiKlu '
+                                                                                                                                               'form, '
+                                                                                                                                               'downloaded '
+                                                                                                                                               'ETT '
+                                                                                                                                               'Proposal, '
+                                                                                                                                               'and '
+                                                                                                                                               'returned '
+                                                                                                                                               'during '
+                                                                                                                                               'the '
+                                                                                                                                               'reporting '
+                                                                                                                                               'window.'},
+                                                                                              'engagement_pattern': [{'label': 'Conversion '
+                                                                                                                               'Interaction',
+                                                                                                                      'explanation': 'The '
+                                                                                                                                     'account '
+                                                                                                                                     'submitted '
+                                                                                                                                     'the '
+                                                                                                                                     'Try '
+                                                                                                                                     'LogiKlu '
+                                                                                                                                     'form '
+                                                                                                                                     'and '
+                                                                                                                                     'downloaded '
+                                                                                                                                     'ETT '
+                                                                                                                                     'Proposal '
+                                                                                                                                     'during '
+                                                                                                                                     'the '
+                                                                                                                                     'reporting '
+                                                                                                                                     'period.'}],
+                                                                                              'why_company_matters': ['Submitted '
+                                                                                                                      'Try '
+                                                                                                                      'LogiKlu '
+                                                                                                                      'form.',
+                                                                                                                      'Downloaded '
+                                                                                                                      'ETT '
+                                                                                                                      'Proposal.',
+                                                                                                                      'Returned '
+                                                                                                                      'across '
+                                                                                                                      'multiple '
+                                                                                                                      'visits.'],
+                                                                                              'account_insight_summary': 'The '
+                                                                                                                         'account '
+                                                                                                                         'submitted '
+                                                                                                                         'the '
+                                                                                                                         'Try '
+                                                                                                                         'LogiKlu '
+                                                                                                                         'form, '
+                                                                                                                         'downloaded '
+                                                                                                                         'ETT '
+                                                                                                                         'Proposal, '
+                                                                                                                         'and '
+                                                                                                                         'returned '
+                                                                                                                         'during '
+                                                                                                                         'the '
+                                                                                                                         'reporting '
+                                                                                                                         'window.',
+                                                                                              'created_date': '2026-07-23 '
+                                                                                                              '11:30:00'}],
+                                                                       'interacted_contacts': [{'agent_report_contact_id': 1,
+                                                                                                'account_id': 1094,
+                                                                                                'contact_id': 118,
+                                                                                                'name': 'Jhilom Haldar',
+                                                                                                'email': 'jhilom@example.com',
+                                                                                                'phone': '+91 '
+                                                                                                         '9876543210',
+                                                                                                'interaction_details': {'summary': 'Contact '
+                                                                                                                                   'submitted '
+                                                                                                                                   'form '
+                                                                                                                                   'and '
+                                                                                                                                   'downloaded '
+                                                                                                                                   'proposal.',
+                                                                                                                        'interaction_types': ['lead_form_submission',
+                                                                                                                                              'asset_downloaded']},
+                                                                                                'interaction_summary': 'Contact '
+                                                                                                                       'submitted '
+                                                                                                                       'form '
+                                                                                                                       'and '
+                                                                                                                       'downloaded '
+                                                                                                                       'proposal.',
+                                                                                                'contact_snapshot': {},
+                                                                                                'created_date': '2026-07-23 '
+                                                                                                                '11:30:00'}],
+                                                                       'contacts_by_account': {'1094': [{'agent_report_contact_id': 1,
+                                                                                                         'account_id': 1094,
+                                                                                                         'contact_id': 118,
+                                                                                                         'name': 'Jhilom '
+                                                                                                                 'Haldar',
+                                                                                                         'email': 'jhilom@example.com',
+                                                                                                         'phone': '+91 '
+                                                                                                                  '9876543210',
+                                                                                                         'interaction_details': {'summary': 'Contact '
+                                                                                                                                            'submitted '
+                                                                                                                                            'form '
+                                                                                                                                            'and '
+                                                                                                                                            'downloaded '
+                                                                                                                                            'proposal.',
+                                                                                                                                 'interaction_types': ['lead_form_submission',
+                                                                                                                                                       'asset_downloaded']},
+                                                                                                         'interaction_summary': 'Contact '
+                                                                                                                                'submitted '
+                                                                                                                                'form '
+                                                                                                                                'and '
+                                                                                                                                'downloaded '
+                                                                                                                                'proposal.',
+                                                                                                         'contact_snapshot': {},
+                                                                                                         'created_date': '2026-07-23 '
+                                                                                                                         '11:30:00'}]}}}}},
+                             {'id': 'focus-report-update-current',
+                              'title': 'Update Current Focus Report',
+                              'method': 'POST',
+                              'path': '/focus/report',
+                              'purpose': 'Replace the current Agentic AI Focus report. This is intended for Agentic '
+                                         'AI/report-generation systems. The API deletes the previous current AI report '
+                                         'rows and inserts the newly posted master report, priority accounts, and '
+                                         'interacted contacts in one transaction.',
+                              'auth_type': 'bearer',
+                              'request_type': 'JSON Body',
+                              'parameters': [{'name': 'report_id',
+                                              'type': 'integer',
+                                              'required': 'Yes',
+                                              'example': '24',
+                                              'description': 'Source Focus report ID from lk_focus_report_master.'},
+                                             {'name': 'report_uid',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'FR202607230202057751',
+                                              'description': 'Source Focus report UID.'},
+                                             {'name': 'report_batch_uid',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'FB202607230202053780',
+                                              'description': 'Source Focus report batch UID.'},
+                                             {'name': 'executive_snapshot',
+                                              'type': 'object',
+                                              'required': 'Yes',
+                                              'example': '{summary_bullets: [], high_priority_company_count: 10}',
+                                              'description': 'Executive snapshot JSON prepared by Agentic AI or copied '
+                                                             'from master report data.'},
+                                             {'name': 'buyer_intent_snapshot_json',
+                                              'type': 'object',
+                                              'required': 'Yes',
+                                              'example': '{dataset_period: 30, measurable_interests: 136}',
+                                              'description': 'Buyer-intent snapshot JSON for report-level activity '
+                                                             'window and intent summary.'},
+                                             {'name': 'priority_accounts',
+                                              'type': 'array',
+                                              'required': 'No',
+                                              'example': '[{account_id: 1094, final_explanation: {...}}]',
+                                              'description': 'Priority account list. Each item requires account_id and '
+                                                             'may include source and final_explanation.'},
+                                             {'name': 'priority_accounts[].account_id',
+                                              'type': 'integer',
+                                              'required': 'Yes',
+                                              'example': '1094',
+                                              'description': 'CRM account ID. Internally this maps to lead_id in old '
+                                                             'Focus tables.'},
+                                             {'name': 'priority_accounts[].source',
+                                              'type': 'object',
+                                              'required': 'No',
+                                              'example': '{source_company_log_id: 221, source_type: '
+                                                         'focus_report_company_log}',
+                                              'description': 'Optional company/account evidence source information.'},
+                                             {'name': 'priority_accounts[].final_explanation',
+                                              'type': 'object',
+                                              'required': 'No',
+                                              'example': '{engagement_pattern: [], why_company_matters: [], '
+                                                         'account_insight_summary: ...}',
+                                              'description': 'Final AI explanation for this company/account.'},
+                                             {'name': 'contacts',
+                                              'type': 'array',
+                                              'required': 'No',
+                                              'example': '[{account_id: 1094, contact_id: 118, name: ..., '
+                                                         'interaction_details: {...}}]',
+                                              'description': 'Interacted contacts by account/company.'},
+                                             {'name': 'contacts[].account_id',
+                                              'type': 'integer',
+                                              'required': 'Yes',
+                                              'example': '1094',
+                                              'description': 'Account/company ID for the contact interaction.'},
+                                             {'name': 'contacts[].contact_id',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '118',
+                                              'description': 'CRM contact ID when available.'},
+                                             {'name': 'contacts[].interaction_details',
+                                              'type': 'object',
+                                              'required': 'No',
+                                              'example': '{summary: Contact submitted form}',
+                                              'description': 'Contact interaction details posted by Agentic AI.'}],
+                              'body': {'report_id': 24,
+                                       'report_uid': 'FR202607230202057751',
+                                       'report_batch_uid': 'FB202607230202053780',
+                                       'executive_snapshot': {'summary_bullets': ['10 companies showed high priority '
+                                                                                  'engagement signals.',
+                                                                                  '2 companies showed high interest '
+                                                                                  'engagement signals.',
+                                                                                  'LKU : 3D Sensing Technology '
+                                                                                  'Solutions and NanoResolution MRS '
+                                                                                  'Sensor were the most visited pages '
+                                                                                  'during the reporting period.',
+                                                                                  '73 companies returned during the '
+                                                                                  'reporting period.'],
+                                                              'high_interest_company_count': 2,
+                                                              'high_priority_company_count': 10},
+                                       'buyer_intent_snapshot_json': {'start_date': '2026-06-24',
+                                                                      'end_date': '2026-07-23',
+                                                                      'dataset_period': 30,
+                                                                      'summary_bullets': ['Measurable Interests : 136 '
+                                                                                          'companies compared.',
+                                                                                          'Total High Priority marked '
+                                                                                          'companies : 10.',
+                                                                                          'Activity Windows : 30 Days '
+                                                                                          '(2026-06-24 to 2026-07-23)'],
+                                                                      'activity_window_text': 'Activity Windows : 30 '
+                                                                                              'Days (2026-06-24 to '
+                                                                                              '2026-07-23)',
+                                                                      'measurable_interests': 136,
+                                                                      'high_priority_company_count': 10},
+                                       'priority_accounts': [{'account_id': 1094,
+                                                              'source': {'source_company_log_id': 221,
+                                                                         'source_type': 'focus_report_company_log',
+                                                                         'source_summary': 'Source generated from '
+                                                                                           'Focus report company log '
+                                                                                           'and posted Agentic AI '
+                                                                                           'explanation.',
+                                                                         'source_json': {'source_table': 'lk_focus_report_company_log',
+                                                                                         'track_ids': [21198,
+                                                                                                       23666,
+                                                                                                       23862,
+                                                                                                       24029],
+                                                                                         'signals': ['lead_form_submitted',
+                                                                                                     'asset_downloaded',
+                                                                                                     'video_views',
+                                                                                                     'repeat_visits']}},
+                                                              'final_explanation': {'engagement_pattern': [{'label': 'Conversion '
+                                                                                                                     'Interaction',
+                                                                                                            'explanation': 'The '
+                                                                                                                           'account '
+                                                                                                                           'submitted '
+                                                                                                                           'the '
+                                                                                                                           'Try '
+                                                                                                                           'LogiKlu '
+                                                                                                                           'form '
+                                                                                                                           'and '
+                                                                                                                           'downloaded '
+                                                                                                                           'ETT '
+                                                                                                                           'Proposal '
+                                                                                                                           'during '
+                                                                                                                           'the '
+                                                                                                                           'reporting '
+                                                                                                                           'period.'}],
+                                                                                    'why_company_matters': ['Submitted '
+                                                                                                            'Try '
+                                                                                                            'LogiKlu '
+                                                                                                            'form.',
+                                                                                                            'Downloaded '
+                                                                                                            'ETT '
+                                                                                                            'Proposal.',
+                                                                                                            'Returned '
+                                                                                                            'across '
+                                                                                                            'multiple '
+                                                                                                            'visits.'],
+                                                                                    'account_insight_summary': 'The '
+                                                                                                               'account '
+                                                                                                               'submitted '
+                                                                                                               'the '
+                                                                                                               'Try '
+                                                                                                               'LogiKlu '
+                                                                                                               'form, '
+                                                                                                               'downloaded '
+                                                                                                               'ETT '
+                                                                                                               'Proposal, '
+                                                                                                               'and '
+                                                                                                               'returned '
+                                                                                                               'during '
+                                                                                                               'the '
+                                                                                                               'reporting '
+                                                                                                               'window.'}}],
+                                       'contacts': [{'account_id': 1094,
+                                                     'contact_id': 118,
+                                                     'name': 'Jhilom Haldar',
+                                                     'email': 'jhilom@example.com',
+                                                     'phone': '+91 9876543210',
+                                                     'interaction_details': {'summary': 'Contact submitted form and '
+                                                                                        'downloaded proposal.',
+                                                                             'interaction_types': ['lead_form_submission',
+                                                                                                   'asset_downloaded']}}]},
+                              'examples': [{'title': 'Replace current Focus report',
+                                            'description': 'Replace the current Agentic AI Focus report for the '
+                                                           'authenticated client.',
+                                            'path': '/focus/report',
+                                            'body': {'report_id': 24,
+                                                     'report_uid': 'FR202607230202057751',
+                                                     'report_batch_uid': 'FB202607230202053780',
+                                                     'executive_snapshot': {'summary_bullets': ['10 companies showed '
+                                                                                                'high priority '
+                                                                                                'engagement signals.',
+                                                                                                '2 companies showed '
+                                                                                                'high interest '
+                                                                                                'engagement signals.',
+                                                                                                'LKU : 3D Sensing '
+                                                                                                'Technology Solutions '
+                                                                                                'and NanoResolution '
+                                                                                                'MRS Sensor were the '
+                                                                                                'most visited pages '
+                                                                                                'during the reporting '
+                                                                                                'period.',
+                                                                                                '73 companies returned '
+                                                                                                'during the reporting '
+                                                                                                'period.'],
+                                                                            'high_interest_company_count': 2,
+                                                                            'high_priority_company_count': 10},
+                                                     'buyer_intent_snapshot_json': {'start_date': '2026-06-24',
+                                                                                    'end_date': '2026-07-23',
+                                                                                    'dataset_period': 30,
+                                                                                    'summary_bullets': ['Measurable '
+                                                                                                        'Interests : '
+                                                                                                        '136 companies '
+                                                                                                        'compared.',
+                                                                                                        'Total High '
+                                                                                                        'Priority '
+                                                                                                        'marked '
+                                                                                                        'companies : '
+                                                                                                        '10.',
+                                                                                                        'Activity '
+                                                                                                        'Windows : 30 '
+                                                                                                        'Days '
+                                                                                                        '(2026-06-24 '
+                                                                                                        'to '
+                                                                                                        '2026-07-23)'],
+                                                                                    'activity_window_text': 'Activity '
+                                                                                                            'Windows : '
+                                                                                                            '30 Days '
+                                                                                                            '(2026-06-24 '
+                                                                                                            'to '
+                                                                                                            '2026-07-23)',
+                                                                                    'measurable_interests': 136,
+                                                                                    'high_priority_company_count': 10},
+                                                     'priority_accounts': [{'account_id': 1094,
+                                                                            'source': {'source_company_log_id': 221,
+                                                                                       'source_type': 'focus_report_company_log',
+                                                                                       'source_summary': 'Source '
+                                                                                                         'generated '
+                                                                                                         'from Focus '
+                                                                                                         'report '
+                                                                                                         'company log '
+                                                                                                         'and posted '
+                                                                                                         'Agentic AI '
+                                                                                                         'explanation.',
+                                                                                       'source_json': {'source_table': 'lk_focus_report_company_log',
+                                                                                                       'track_ids': [21198,
+                                                                                                                     23666,
+                                                                                                                     23862,
+                                                                                                                     24029],
+                                                                                                       'signals': ['lead_form_submitted',
+                                                                                                                   'asset_downloaded',
+                                                                                                                   'video_views',
+                                                                                                                   'repeat_visits']}},
+                                                                            'final_explanation': {'engagement_pattern': [{'label': 'Conversion '
+                                                                                                                                   'Interaction',
+                                                                                                                          'explanation': 'The '
+                                                                                                                                         'account '
+                                                                                                                                         'submitted '
+                                                                                                                                         'the '
+                                                                                                                                         'Try '
+                                                                                                                                         'LogiKlu '
+                                                                                                                                         'form '
+                                                                                                                                         'and '
+                                                                                                                                         'downloaded '
+                                                                                                                                         'ETT '
+                                                                                                                                         'Proposal '
+                                                                                                                                         'during '
+                                                                                                                                         'the '
+                                                                                                                                         'reporting '
+                                                                                                                                         'period.'}],
+                                                                                                  'why_company_matters': ['Submitted '
+                                                                                                                          'Try '
+                                                                                                                          'LogiKlu '
+                                                                                                                          'form.',
+                                                                                                                          'Downloaded '
+                                                                                                                          'ETT '
+                                                                                                                          'Proposal.',
+                                                                                                                          'Returned '
+                                                                                                                          'across '
+                                                                                                                          'multiple '
+                                                                                                                          'visits.'],
+                                                                                                  'account_insight_summary': 'The '
+                                                                                                                             'account '
+                                                                                                                             'submitted '
+                                                                                                                             'the '
+                                                                                                                             'Try '
+                                                                                                                             'LogiKlu '
+                                                                                                                             'form, '
+                                                                                                                             'downloaded '
+                                                                                                                             'ETT '
+                                                                                                                             'Proposal, '
+                                                                                                                             'and '
+                                                                                                                             'returned '
+                                                                                                                             'during '
+                                                                                                                             'the '
+                                                                                                                             'reporting '
+                                                                                                                             'window.'}}],
+                                                     'contacts': [{'account_id': 1094,
+                                                                   'contact_id': 118,
+                                                                   'name': 'Jhilom Haldar',
+                                                                   'email': 'jhilom@example.com',
+                                                                   'phone': '+91 9876543210',
+                                                                   'interaction_details': {'summary': 'Contact '
+                                                                                                      'submitted form '
+                                                                                                      'and downloaded '
+                                                                                                      'proposal.',
+                                                                                           'interaction_types': ['lead_form_submission',
+                                                                                                                 'asset_downloaded']}}]}}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'Focus report updated successfully',
+                                                   'meta': {'generated_at': '2026-07-23T11:30:00+00:00',
+                                                            'mode': 'protected',
+                                                            'schema_version': 'logiklu_focus_agent_report.v1'},
+                                                   'data': {'report': {'schema_version': 'logiklu_focus_agent_report.v1',
+                                                                       'agent_report_id': 1,
+                                                                       'source_report_id': 24,
+                                                                       'report_uid': 'FR202607230202057751',
+                                                                       'report_batch_uid': 'FB202607230202053780',
+                                                                       'priority_account_count': 1,
+                                                                       'interacted_contact_count': 1,
+                                                                       'updated_at': '2026-07-23 11:30:00'}}}}]},
               {'id': 'leadforms',
                'title': 'Leadforms',
                'description': 'Use Leadforms APIs to read leadform definitions, embed configurations, embed settings, '
