@@ -43,7 +43,7 @@ def _limit_value(value: Any) -> Optional[int]:
     """
     Convert a configured limit into an integer.
 
-    NULL / empty means unlimited. BIGINT columns cannot store the text
+    NULL / empty / zero means unlimited. BIGINT columns cannot store the text
     'infinity', but this also treats common infinity text as unlimited in case
     a future VARCHAR config is used.
     """
@@ -52,7 +52,7 @@ def _limit_value(value: Any) -> Optional[int]:
 
     if isinstance(value, str):
         text = value.strip().lower()
-        if text in ("", "null", "none", "unlimited", "infinite", "infinity", "inf", "-1"):
+        if text in ("", "0", "null", "none", "unlimited", "infinite", "infinity", "inf", "-1"):
             return None
         try:
             return int(float(text))
@@ -64,7 +64,7 @@ def _limit_value(value: Any) -> Optional[int]:
     except Exception:
         return None
 
-    if limit < 0:
+    if limit <= 0:
         return None
 
     return limit
