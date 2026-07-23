@@ -1,16 +1,13 @@
-# Auto-generated LogiKlu API usage data with Leadforms, Roles, and Users.
-# Replace the matching app/core file with this file.
+# Auto-generated LogiKlu API client instruction data with Focus Current Report.
+# Replace app/core/api_instruction_data.py with this file.
 
 API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
- 'subtitle': 'Client-facing developer guide for LogiKlu Focus Account Intelligence, Focus Contacts, Campaigns, and '
-             'Leadforms, Users APIs using OAuth 2.0 Bearer JWT authentication, including submitted contact search for '
-             'Leadforms, Users and Roles APIs.',
+ 'subtitle': 'Client-facing developer guide for LogiKlu Focus Account Intelligence, Focus Contacts, Focus Current '
+             'Report, Campaigns, Leadforms, Roles, and Users APIs using OAuth 2.0 Bearer JWT authentication.',
  'base_url': 'https://api.logiklu.com',
  'sandbox_base_url': 'https://sandboxapi.logiklu.com',
  'local_base_url': 'http://127.0.0.1:8000',
  'api_version': 'v1',
- 'auth_badge': 'Bearer JWT',
- 'quick_start_auth_type': 'bearer',
  'auth': {'title': 'Authentication',
           'description': 'Protected APIs use OAuth 2.0 Client Credentials with a short-lived Bearer JWT. First '
                          'generate an access token from /oauth/token, then send it in the Authorization header.',
@@ -24,8 +21,9 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                              'content_type': 'application/json',
                              'description': 'Generate a short-lived access token using the OAuth client credentials '
                                             'flow.',
-                             'request_body': {'client_id': 'OAuth client ID provided by LogiKlu.',
-                                              'client_secret': 'Client secret provided by LogiKlu. Keep this private.',
+                             'request_body': {'client_id': 'Provided OAuth client ID. This is the OAuth client ID '
+                                                           'assigned to the client.',
+                                              'client_secret': 'Provided client secret. Keep this private.',
                                               'grant_type': 'client_credentials'},
                              'response_fields': {'access_token': 'JWT access token to be sent as Bearer token.',
                                                  'token_type': 'Bearer',
@@ -33,16 +31,26 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                                                'seconds.',
                                                  'scope': 'Allowed API permissions/scopes. roles:read users:read.'}}},
  'response_format': {'success': {'status': 'success',
-                                 'message': 'API request successful',
-                                 'meta': {'generated_at': '2026-07-03T13:30:00+00:00',
+                                 'message': 'Accounts fetched successfully',
+                                 'meta': {'generated_at': '2026-05-27T10:00:00+00:00',
                                           'page': 1,
-                                          'per_page': 10,
-                                          'record_count': 10},
-                                 'data': {'schema_version': 'logiklu_focus_contact.v1', 'focus_contacts': []}},
+                                          'per_page': 20,
+                                          'offset': 0,
+                                          'search': None,
+                                          'search_by': None,
+                                          'applied_filters': [{'field': 'country',
+                                                               'operator': 'like',
+                                                               'value': 'India'}],
+                                          'record_count': 20,
+                                          'total_records': 357,
+                                          'total_pages': 18,
+                                          'has_next': True,
+                                          'has_previous': False},
+                                 'data': {}},
                      'error': {'status': 'error',
-                               'message': 'Missing API key or bearer token',
+                               'message': 'Missing bearer token',
                                'error_code': 'AUTH_CREDENTIALS_MISSING',
-                               'meta': {'timestamp': '2026-07-03T10:00:00+00:00'},
+                               'meta': {'timestamp': '2026-05-27T10:00:00+00:00'},
                                'data': None}},
  'notes': [{'title': 'OAuth token flow',
             'description': 'Call /oauth/token with client_id, client_secret, and grant_type=client_credentials. Then '
@@ -54,8 +62,8 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
             'description': 'JWT_SECRET_KEY is an internal LogiKlu server secret. It must never be shared with API '
                            'consumers.'},
            {'title': 'Clean endpoint paths',
-            'description': 'Public API routes use clean paths such as /oauth/token and /focus/account-intelligence. Do '
-                           'not prefix these routes with /api/v1.'},
+            'description': 'Public API routes use clean paths such as /accounts, /contacts, /oauth/token, and '
+                           '/focus/account-intelligence. Do not prefix these routes with /api/v1.'},
            {'title': 'API logging',
             'description': 'API requests are logged internally for audit, troubleshooting, and support. Internal '
                            'storage details are not exposed in this developer guide.'},
@@ -128,50 +136,61 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                            'returned.'},
            {'title': 'Users product permissions',
             'description': 'product_permissions returns product name and permission group role details for each '
-                           'assigned product.'}],
+                           'assigned product.'},
+           {'title': 'Focus Report endpoint rule',
+            'description': 'The Focus Current Report API uses one clean route: GET /focus/report fetches the current '
+                           'report and POST /focus/report replaces it. Do not use /focus/update-report or '
+                           '/focus/update-current-report.'},
+           {'title': 'Focus Report replacement rule',
+            'description': 'POST /focus/report stores only one current Agentic AI report. It replaces the previous '
+                           'data in lk_focus_agent_report_master, lk_focus_agent_report_priority_account, and '
+                           'lk_focus_agent_report_contact_interaction for the authenticated client database.'},
+           {'title': 'Focus Report account source rule',
+            'description': 'priority_accounts[].account_id is the CRM account ID and maps to lead_id in old Focus '
+                           'report tables. Source evidence is stored separately under the source object and may '
+                           'reference lk_focus_report_company_log.'},
+           {'title': 'Focus Report contacts rule',
+            'description': 'contacts are posted as interacted contacts by account. GET /focus/report returns '
+                           'interacted_contacts as a flat list and contacts_by_account grouped by account_id.'},
+           {'title': 'Focus Report schema version',
+            'description': 'GET and POST /focus/report use schema_version logiklu_focus_agent_report.v1.'}],
  'sections': [{'id': 'authentication',
                'title': 'OAuth / JWT Authentication',
-               'description': 'Generate a Bearer access token using client credentials, then call protected APIs with '
+               'description': 'Generate a short-lived access token using /oauth/token. Then call protected APIs using '
                               'Authorization: Bearer <access_token>.',
                'endpoints': [{'id': 'oauth-token',
                               'title': 'Generate Access Token',
                               'method': 'POST',
                               'path': '/oauth/token',
-                              'purpose': 'Generate a Bearer access token using the client credentials provided by '
-                                         'LogiKlu.',
-                              'auth_type': 'none',
+                              'purpose': 'Generate a Bearer access token using OAuth client credentials. This endpoint '
+                                         'uses No Auth.',
                               'request_type': 'JSON Body',
                               'parameters': [{'name': 'client_id',
-                                              'type': 'string',
                                               'required': 'Yes',
                                               'example': 'lkc_3f2a6a9eae2c4b2db37f9875f0e9a111',
-                                              'description': 'OAuth client ID provided by LogiKlu.'},
+                                              'description': 'OAuth client ID provided by LogiKlu. This maps to the '
+                                                             'OAuth client ID assigned to the client.'},
                                              {'name': 'client_secret',
-                                              'type': 'string',
                                               'required': 'Yes',
                                               'example': 'provided_client_secret',
                                               'description': 'Client secret provided by LogiKlu. Keep this private and '
                                                              'never expose it in frontend code.'},
                                              {'name': 'grant_type',
-                                              'type': 'string',
                                               'required': 'Yes',
                                               'example': 'client_credentials',
                                               'description': 'Must be client_credentials.'}],
-                              'body': {'client_id': 'YOUR_CLIENT_ID',
-                                       'client_secret': 'YOUR_CLIENT_SECRET',
-                                       'grant_type': 'client_credentials'},
                               'examples': [{'title': 'Generate token',
                                             'description': 'Call this endpoint with No Auth. Use the returned '
                                                            'access_token as Bearer token for protected APIs.',
                                             'path': '/oauth/token',
                                             'body': {'client_id': 'YOUR_CLIENT_ID',
                                                      'client_secret': 'YOUR_CLIENT_SECRET',
-                                                     'grant_type': 'client_credentials'}}],
-                              'response_example': {'access_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-                                                   'token_type': 'Bearer',
-                                                   'expires_in': 900,
-                                                   'scope': 'focus:account-intelligence:read focus:contacts:read '
-                                                            'leadforms:read roles:read users:read'}}]},
+                                                     'grant_type': 'client_credentials'},
+                                            'query': {}}],
+                              'auth_type': 'none',
+                              'body': {'client_id': 'YOUR_CLIENT_ID',
+                                       'client_secret': 'YOUR_CLIENT_SECRET',
+                                       'grant_type': 'client_credentials'}}]},
               {'id': 'focus-account-intelligence',
                'title': 'Focus Account Intelligence',
                'description': 'Use Focus Account Intelligence APIs to read LogiKlu Focus buying-intent signals, score '
@@ -186,7 +205,6 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                          'account/company filters, linked contact filters, score range filters, '
                                          'priority filters, pagination, signal summary, and journey intelligence. '
                                          'Journey data is included by default.',
-                              'auth_type': 'bearer',
                               'request_type': 'Query Parameters',
                               'parameters': [{'name': 'page',
                                               'type': 'integer',
@@ -563,43 +581,7 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                             'query': {'filters': '[{"field":"final_score","operator":"between","value":[50,100]}]',
                                                       'page': 1,
                                                       'per_page': 10}}],
-                              'response_example': {'status': 'success',
-                                                   'message': 'LogiKlu account intelligence list fetched successfully',
-                                                   'meta': {'generated_at': '2026-07-03T10:00:00+00:00',
-                                                            'mode': 'protected',
-                                                            'page': 1,
-                                                            'per_page': 10,
-                                                            'record_count': 1,
-                                                            'total_records': 1,
-                                                            'total_pages': 1,
-                                                            'has_next': False,
-                                                            'has_previous': False},
-                                                   'data': {'logiklu_focus_account_intelligence': [{'schema_version': 'logiklu_focus_account_intelligence.v1',
-                                                                                                    'account': {'account_id': 1094,
-                                                                                                                'company_name': 'LogiKlu',
-                                                                                                                'company_domain': 'logiklu.com',
-                                                                                                                'location': {'country': 'India',
-                                                                                                                             'state': 'West '
-                                                                                                                                      'Bengal',
-                                                                                                                             'city': 'Kolkata'},
-                                                                                                                'industry': 'Software'},
-                                                                                                    'deterministic_scores': {'score_components': {'activity': 75,
-                                                                                                                                                  'sustenance': 30,
-                                                                                                                                                  'depth': 55,
-                                                                                                                                                  'contextual': 10,
-                                                                                                                                                  'conversion': 20,
-                                                                                                                                                  'priority': 85},
-                                                                                                                             'interest_score': 80,
-                                                                                                                             'interest_level': 'High',
-                                                                                                                             'priority_label': 'Hot',
-                                                                                                                             'final_score': 85},
-                                                                                                    'signal_summary': {'session_count': 5,
-                                                                                                                       'page_view_count': 29,
-                                                                                                                       'total_action_count': 20,
-                                                                                                                       'asset_download_count': 7,
-                                                                                                                       'external_link_click_count': 7,
-                                                                                                                       'form_submission_count': 6},
-                                                                                                    'top_evidence_facts': []}]}},
+                              'auth_type': 'bearer',
                               'multi_field_filters': [{'name': 'search',
                                                        'example': 'LogiKlu',
                                                        'description': 'General search across company/account fields, '
@@ -825,17 +807,53 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                                     {'name': 'final_score',
                                                      'example': '75',
                                                      'description': 'Search/filter final score, usually better handled '
-                                                                    'with final_score_min/final_score_max.'}]},
+                                                                    'with final_score_min/final_score_max.'}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'LogiKlu account intelligence list fetched successfully',
+                                                   'meta': {'generated_at': '2026-07-03T10:00:00+00:00',
+                                                            'mode': 'protected',
+                                                            'page': 1,
+                                                            'per_page': 10,
+                                                            'record_count': 1,
+                                                            'total_records': 1,
+                                                            'total_pages': 1,
+                                                            'has_next': False,
+                                                            'has_previous': False},
+                                                   'data': {'logiklu_focus_account_intelligence': [{'schema_version': 'logiklu_focus_account_intelligence.v1',
+                                                                                                    'account': {'account_id': 1094,
+                                                                                                                'company_name': 'LogiKlu',
+                                                                                                                'company_domain': 'logiklu.com',
+                                                                                                                'location': {'country': 'India',
+                                                                                                                             'state': 'West '
+                                                                                                                                      'Bengal',
+                                                                                                                             'city': 'Kolkata'},
+                                                                                                                'industry': 'Software'},
+                                                                                                    'deterministic_scores': {'score_components': {'activity': 75,
+                                                                                                                                                  'sustenance': 30,
+                                                                                                                                                  'depth': 55,
+                                                                                                                                                  'contextual': 10,
+                                                                                                                                                  'conversion': 20,
+                                                                                                                                                  'priority': 85},
+                                                                                                                             'interest_score': 80,
+                                                                                                                             'interest_level': 'High',
+                                                                                                                             'priority_label': 'Hot',
+                                                                                                                             'final_score': 85},
+                                                                                                    'signal_summary': {'session_count': 5,
+                                                                                                                       'page_view_count': 29,
+                                                                                                                       'total_action_count': 20,
+                                                                                                                       'asset_download_count': 7,
+                                                                                                                       'external_link_click_count': 7,
+                                                                                                                       'form_submission_count': 6},
+                                                                                                    'top_evidence_facts': []}]}}},
                              {'id': 'focus-account-intelligence-detail',
                               'title': 'Focus Account Intelligence Details',
                               'method': 'GET',
                               'path': '/focus/account-intelligence/{account_id}',
                               'purpose': 'Fetch one account intelligence record by account ID with score, signal '
-                                         'summary, evidence, contacts, and journey intelligence.',
-                              'auth_type': 'bearer',
+                                         'summary, evidence, contacts, and journey intelligence. Preferred '
+                                         'authentication: Authorization Bearer token.',
                               'request_type': 'Path Parameter',
                               'parameters': [{'name': 'account_id',
-                                              'type': 'integer',
                                               'required': 'Yes',
                                               'example': '1094',
                                               'description': 'Account ID / lead ID for which Focus intelligence should '
@@ -844,15 +862,7 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                             'description': 'Use this when you already know the account ID.',
                                             'path': '/focus/account-intelligence/1094',
                                             'query': {}}],
-                              'response_example': {'status': 'success',
-                                                   'message': 'Focus Account Intelligence fetched successfully',
-                                                   'meta': {'generated_at': '2026-07-03T10:00:00+00:00',
-                                                            'account_id': 1094},
-                                                   'data': {'logiklu_account_inetellegence': {'schema_version': 'logiklu_focus_account_intelligence.v1',
-                                                                                              'account': {'account_id': 1094,
-                                                                                                          'company_name': 'LogiKlu'},
-                                                                                              'signal_summary': {},
-                                                                                              'top_evidence_facts': []}}}}]},
+                              'auth_type': 'bearer'}]},
               {'id': 'focus-contacts',
                'title': 'Focus Contacts',
                'description': 'Contacts with Focus interactions from Lead Form submissions, Inner Form submissions, or '
@@ -1409,514 +1419,597 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                                                                                                                     '21:35:10',
                                                                                                             'last_interaction_at': '2026-06-26 '
                                                                                                                                    '21:35:10'}}}}}]},
-              {'id': 'campaigns',
-               'title': 'Campaigns',
-               'description': 'Use Campaign APIs to read email campaign master data, delivery/open/click/bounce '
-                              'statistics, and recipient-level detailed stats.',
-               'endpoints': [{'id': 'campaign-list',
-                              'title': 'Campaign List',
+              {'id': 'focus-report',
+               'title': 'Focus Current Report',
+               'description': 'Use Focus Current Report APIs to let Agentic AI replace the latest prepared Focus '
+                              'report and to let the frontend fetch the current prepared report. Both read and write '
+                              'operations use the same clean path: /focus/report.',
+               'endpoints': [{'id': 'focus-report-get-current',
+                              'title': 'Get Current Focus Report',
                               'method': 'GET',
-                              'path': '/campaigns',
-                              'purpose': 'Fetch campaigns with campaign master fields, summary statistics, detailed '
-                                         'recipient groups, dynamic search, contact search, stat range filters, '
-                                         'sorting, and page/per_page pagination.',
+                              'path': '/focus/report',
+                              'purpose': 'Fetch the currently stored Agentic AI Focus report. The response includes '
+                                         'report-level executive snapshot, buyer-intent snapshot, priority accounts, '
+                                         'interacted contacts, and contacts grouped by account.',
                               'auth_type': 'bearer',
-                              'request_type': 'Query Parameters',
-                              'parameters': [{'name': 'page',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '1',
-                                              'description': 'Page number. Starts from 1. Default is 1.'},
-                                             {'name': 'per_page',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '10',
-                                              'description': 'Number of campaigns per page. Maximum value is 100.'},
-                                             {'name': 'search',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': 'welcome',
-                                              'description': 'General search across campaign name, subject, content, '
-                                                             'sender, provider ID, list ID, and contact fields where '
-                                                             'supported.'},
-                                             {'name': 'search_by',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': 'contact',
-                                              'description': 'Search only one selected field. Example values: '
-                                                             'campaign_name, subject, content, sender, list_id, '
-                                                             'contact.'},
-                                             {'name': 'filters',
-                                              'type': 'JSON string',
-                                              'required': 'No',
-                                              'example': '[{"field":"clicked","operator":"gte","value":5}]',
-                                              'description': 'Advanced JSON filters for field/operator/value '
-                                                             'filtering. Useful for eq, like, in, from, to, gte, lte, '
-                                                             'and between style filtering.'},
-                                             {'name': 'include_details',
-                                              'type': 'boolean',
-                                              'required': 'No',
-                                              'example': 'true',
-                                              'description': 'When true, returns detailed_stat contact lists. Use '
-                                                             'false for a lighter summary response.'},
-                                             {'name': 'campaign_id',
-                                              'type': 'integer/string',
-                                              'required': 'No',
-                                              'example': '1',
-                                              'description': 'Filter by exact campaign ID. Comma-separated IDs are '
-                                                             'supported.'},
-                                             {'name': 'campaign_provider_id',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': '6001401',
-                                              'description': 'Filter by email provider campaign ID.'},
-                                             {'name': 'campaign_name',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': 'Welcome',
-                                              'description': 'Filter by campaign name.'},
-                                             {'name': 'campaignname',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': 'Welcome',
-                                              'description': 'Alias for campaign_name.'},
-                                             {'name': 'subject',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': 'Welcome',
-                                              'description': 'Filter by campaign subject.'},
-                                             {'name': 'content',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': 'offer',
-                                              'description': 'Filter by campaign HTML/text content.'},
-                                             {'name': 'sender',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': 'logikluenterprise@gmail.com',
-                                              'description': 'Filter by campaign sender name or sender email.'},
-                                             {'name': 'list_id',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': '1',
-                                              'description': 'Filter by campaign list ID.'},
-                                             {'name': 'search_by_list_name',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': '1',
-                                              'description': 'Search campaign list identifier. If list master data is '
-                                                             'later available, this can search list name.'},
-                                             {'name': 'search_by_contact',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': 'suzanne',
-                                              'description': 'Filter campaigns where any recipient/contact name, '
-                                                             'email, or supported contact field matches this value.'},
-                                             {'name': 'status',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': 'sent',
-                                              'description': 'Filter by campaign status. Example values: draft, sent, '
-                                                             'scheduled.'},
-                                             {'name': 'active_status',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': 'created',
-                                              'description': 'Filter by active_status. Example values: created, '
-                                                             'linked.'},
-                                             {'name': 'created_date_from',
-                                              'type': 'date/datetime',
-                                              'required': 'No',
-                                              'example': '2026-07-01',
-                                              'description': 'Return campaigns created on or after this date/time.'},
-                                             {'name': 'created_date_to',
-                                              'type': 'date/datetime',
-                                              'required': 'No',
-                                              'example': '2026-07-31',
-                                              'description': 'Return campaigns created on or before this date/time.'},
-                                             {'name': 'sent_date_from',
-                                              'type': 'date/datetime',
-                                              'required': 'No',
-                                              'example': '2026-07-01',
-                                              'description': 'Return campaigns sent on or after this date/time. Sent '
-                                                             'date is based on scheduled_date/updated_at where '
-                                                             'available.'},
-                                             {'name': 'sent_date_to',
-                                              'type': 'date/datetime',
-                                              'required': 'No',
-                                              'example': '2026-07-31',
-                                              'description': 'Return campaigns sent on or before this date/time.'},
-                                             {'name': 'sort_by',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': 'highest_clicked',
-                                              'description': 'Sort campaigns. Examples: created_date, campaign_name, '
-                                                             'highest_clicked, highest_opened, highest_delivered, '
-                                                             'clicked, opened, delivered, total_bounced.'},
-                                             {'name': 'sort_order',
-                                              'type': 'string',
-                                              'required': 'No',
-                                              'example': 'desc',
-                                              'description': 'Sort direction for supported sort_by values. Allowed '
-                                                             'values: asc, desc.'},
-                                             {'name': 'total_recipients_min',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '10',
-                                              'description': 'Minimum total recipient count.'},
-                                             {'name': 'total_recipients_max',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '100',
-                                              'description': 'Maximum total recipient count.'},
-                                             {'name': 'delivered_min',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '10',
-                                              'description': 'Minimum total delivered count. delivered = not_opened + '
-                                                             'opened + clicked.'},
-                                             {'name': 'delivered_max',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '100',
-                                              'description': 'Maximum total delivered count.'},
-                                             {'name': 'not_opened_min',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '1',
-                                              'description': 'Minimum not opened count. not_opened means raw event '
-                                                             'delivered only.'},
-                                             {'name': 'not_opened_max',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '50',
-                                              'description': 'Maximum not opened count.'},
-                                             {'name': 'opened_min',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '5',
-                                              'description': 'Minimum opened count.'},
-                                             {'name': 'opened_max',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '20',
-                                              'description': 'Maximum opened count.'},
-                                             {'name': 'clicked_min',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '5',
-                                              'description': 'Minimum clicked count.'},
-                                             {'name': 'clicked_max',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '20',
-                                              'description': 'Maximum clicked count.'},
-                                             {'name': 'hard_bounced_min',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '0',
-                                              'description': 'Minimum hard bounced count.'},
-                                             {'name': 'hard_bounced_max',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '10',
-                                              'description': 'Maximum hard bounced count.'},
-                                             {'name': 'soft_bounced_min',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '0',
-                                              'description': 'Minimum soft bounced count.'},
-                                             {'name': 'soft_bounced_max',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '10',
-                                              'description': 'Maximum soft bounced count.'},
-                                             {'name': 'total_bounced_min',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '1',
-                                              'description': 'Minimum total bounced count. total_bounced = '
-                                                             'hard_bounced + soft_bounced.'},
-                                             {'name': 'total_bounced_max',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '10',
-                                              'description': 'Maximum total bounced count.'},
-                                             {'name': 'unsubscribed_min',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '0',
-                                              'description': 'Minimum unsubscribed count.'},
-                                             {'name': 'unsubscribed_max',
-                                              'type': 'integer',
-                                              'required': 'No',
-                                              'example': '10',
-                                              'description': 'Maximum unsubscribed count.'}],
-                              'examples': [{'title': 'First page',
-                                            'description': 'Fetch the first page of campaigns.',
-                                            'path': '/campaigns',
-                                            'query': {'page': 1, 'per_page': 10}},
-                                           {'title': 'General campaign search',
-                                            'description': 'Search campaigns across campaign name, subject, content, '
-                                                           'sender, list, and contact fields where supported.',
-                                            'path': '/campaigns',
-                                            'query': {'search': 'welcome', 'page': 1, 'per_page': 10}},
-                                           {'title': 'Search by campaign name',
-                                            'description': 'Return campaigns whose campaign name contains Welcome.',
-                                            'path': '/campaigns',
-                                            'query': {'campaign_name': 'Welcome', 'page': 1, 'per_page': 10}},
-                                           {'title': 'Search by subject and sender',
-                                            'description': 'Combine subject and sender filters. Direct filters are '
-                                                           'combined using AND logic.',
-                                            'path': '/campaigns',
-                                            'query': {'subject': 'Welcome',
-                                                      'sender': 'logikluenterprise@gmail.com',
-                                                      'page': 1,
-                                                      'per_page': 10}},
-                                           {'title': 'Search by contact',
-                                            'description': 'Return campaigns where any recipient/contact matches the '
-                                                           'supplied value.',
-                                            'path': '/campaigns',
-                                            'query': {'search_by_contact': 'suzanne', 'page': 1, 'per_page': 10}},
-                                           {'title': 'Highest clicked campaigns',
-                                            'description': 'Sort campaigns by clicked count descending.',
-                                            'path': '/campaigns',
-                                            'query': {'sort_by': 'highest_clicked', 'page': 1, 'per_page': 10}},
-                                           {'title': 'Clicked range filter',
-                                            'description': 'Return campaigns with clicked count between 5 and 20.',
-                                            'path': '/campaigns',
-                                            'query': {'clicked_min': 5, 'clicked_max': 20, 'page': 1, 'per_page': 10}},
-                                           {'title': 'Delivered and opened range filter',
-                                            'description': 'Combine delivered and opened stat range filters.',
-                                            'path': '/campaigns',
-                                            'query': {'delivered_min': 10, 'opened_min': 5, 'page': 1, 'per_page': 10}},
-                                           {'title': 'Created date range',
-                                            'description': 'Return campaigns created within a selected date range.',
-                                            'path': '/campaigns',
-                                            'query': {'created_date_from': '2026-07-01',
-                                                      'created_date_to': '2026-07-31',
-                                                      'page': 1,
-                                                      'per_page': 10}},
-                                           {'title': 'Advanced JSON filter',
-                                            'description': 'Use filters for field/operator/value style filtering.',
-                                            'path': '/campaigns',
-                                            'query': {'filters': '[{"field":"clicked","operator":"gte","value":5}]',
-                                                      'page': 1,
-                                                      'per_page': 10}}],
+                              'request_type': 'None',
+                              'parameters': [],
+                              'examples': [{'title': 'Fetch current report',
+                                            'description': 'Return the latest current Agentic AI Focus report for the '
+                                                           'authenticated client.',
+                                            'path': '/focus/report',
+                                            'query': {}}],
                               'response_example': {'status': 'success',
-                                                   'message': 'Campaigns fetched successfully',
-                                                   'meta': {'generated_at': '2026-07-04T10:00:00+00:00',
-                                                            'search': None,
-                                                            'search_by': None,
-                                                            'include_details': True,
-                                                            'applied_filters': [],
-                                                            'sort_by': 'highest_clicked',
-                                                            'sort_order': 'desc',
-                                                            'page': 1,
-                                                            'per_page': 10,
-                                                            'offset': 0,
-                                                            'record_count': 1,
-                                                            'total_records': 1,
-                                                            'total_pages': 1,
-                                                            'has_next': False,
-                                                            'has_previous': False},
-                                                   'data': {'schema_version': 'logiklu_campaign.v1',
-                                                            'campaigns': [{'campaign_id': 1,
-                                                                           'campaign_provider_id': '1',
-                                                                           'campaign_name': 'Welcome Campaign',
-                                                                           'campaign_subject': 'Welcome to LogiKlu',
-                                                                           'campaign_sender': {'name': 'Alex Hans',
-                                                                                               'email': 'logikluenterprise@gmail.com'},
-                                                                           'created_date': '2026-07-01 10:30:00',
-                                                                           'sent_date': '2026-07-01 12:00:00',
-                                                                           'stats': {'total_recipients': 27,
-                                                                                     'delivered': 25,
-                                                                                     'not_opened': 4,
-                                                                                     'opened': 9,
-                                                                                     'clicked': 12,
-                                                                                     'hard_bounced': 1,
-                                                                                     'soft_bounced': 1,
-                                                                                     'total_bounced': 2,
-                                                                                     'unsubscribed': 0,
-                                                                                     'open_rate': 36.0,
-                                                                                     'click_rate': 48.0,
-                                                                                     'bounce_rate': 7.41,
-                                                                                     'unsubscribed_rate': 0.0},
-                                                                           'detailed_stat': {'delivered': [{'contact_id': 329,
-                                                                                                            'name': 'Suzanne '
-                                                                                                                    'Burris',
-                                                                                                            'email': 'suzanne.burris@tokoelectron.com'}],
-                                                                                             'not_opened': [],
-                                                                                             'opened': [],
-                                                                                             'clicked': [],
-                                                                                             'hard_bounced': [],
-                                                                                             'soft_bounced': [],
-                                                                                             'total_bounced': [],
-                                                                                             'unsubscribed': []}}]}},
-                              'multi_field_filters': [{'name': 'campaign_id',
-                                                       'example': '1',
-                                                       'description': 'Exact campaign ID. Comma-separated values are '
-                                                                      'supported.'},
-                                                      {'name': 'campaign_provider_id',
-                                                       'example': '6001401',
-                                                       'description': 'Provider-side campaign ID.'},
-                                                      {'name': 'campaign_name',
-                                                       'example': 'Welcome',
-                                                       'description': 'Campaign name.'},
-                                                      {'name': 'campaignname',
-                                                       'example': 'Welcome',
-                                                       'description': 'Alias for campaign_name.'},
-                                                      {'name': 'subject',
-                                                       'example': 'Welcome',
-                                                       'description': 'Campaign subject.'},
-                                                      {'name': 'content',
-                                                       'example': 'offer',
-                                                       'description': 'Campaign content.'},
-                                                      {'name': 'sender',
-                                                       'example': 'logikluenterprise@gmail.com',
-                                                       'description': 'Campaign sender name or email.'},
-                                                      {'name': 'list_id',
-                                                       'example': '1',
-                                                       'description': 'Campaign list ID.'},
-                                                      {'name': 'search_by_list_name',
-                                                       'example': '1',
-                                                       'description': 'Campaign list identifier / list search.'},
-                                                      {'name': 'search_by_contact',
-                                                       'example': 'suzanne',
-                                                       'description': 'Recipient/contact name, email, phone, or '
-                                                                      'supported contact field.'},
-                                                      {'name': 'status',
-                                                       'example': 'sent',
-                                                       'description': 'Campaign status.'},
-                                                      {'name': 'created_date_from',
-                                                       'example': '2026-07-01',
-                                                       'description': 'Created date lower bound.'},
-                                                      {'name': 'created_date_to',
-                                                       'example': '2026-07-31',
-                                                       'description': 'Created date upper bound.'},
-                                                      {'name': 'clicked_min',
-                                                       'example': '5',
-                                                       'description': 'Clicked count lower bound.'},
-                                                      {'name': 'clicked_max',
-                                                       'example': '20',
-                                                       'description': 'Clicked count upper bound.'},
-                                                      {'name': 'opened_min',
-                                                       'example': '5',
-                                                       'description': 'Opened count lower bound.'},
-                                                      {'name': 'delivered_min',
-                                                       'example': '10',
-                                                       'description': 'Delivered count lower bound.'},
-                                                      {'name': 'total_bounced_min',
-                                                       'example': '1',
-                                                       'description': 'Total bounced lower bound.'},
-                                                      {'name': 'sort_by',
-                                                       'example': 'highest_clicked',
-                                                       'description': 'Sort by a supported campaign/stat field.'}],
-                              'search_by_options': [{'name': 'campaign_name',
-                                                     'example': 'Welcome',
-                                                     'description': 'Search campaign name only.'},
-                                                    {'name': 'campaignname',
-                                                     'example': 'Welcome',
-                                                     'description': 'Alias for campaign_name.'},
-                                                    {'name': 'subject',
-                                                     'example': 'Welcome',
-                                                     'description': 'Search campaign subject only.'},
-                                                    {'name': 'content',
-                                                     'example': 'offer',
-                                                     'description': 'Search campaign content only.'},
-                                                    {'name': 'sender',
-                                                     'example': 'Alex',
-                                                     'description': 'Search sender JSON/name/email only.'},
-                                                    {'name': 'list_id',
-                                                     'example': '1',
-                                                     'description': 'Search list ID only.'},
-                                                    {'name': 'list_name',
-                                                     'example': '1',
-                                                     'description': 'Search list identifier/list name where '
-                                                                    'available.'},
-                                                    {'name': 'contact',
-                                                     'example': 'suzanne',
-                                                     'description': 'Search campaign recipients/contacts.'},
-                                                    {'name': 'status',
-                                                     'example': 'sent',
-                                                     'description': 'Search/filter campaign status.'},
-                                                    {'name': 'clicked',
-                                                     'example': '10',
-                                                     'description': 'Search/filter clicked count. Range filters are '
-                                                                    'preferred for numeric stats.'},
-                                                    {'name': 'opened',
-                                                     'example': '10',
-                                                     'description': 'Search/filter opened count. Range filters are '
-                                                                    'preferred for numeric stats.'},
-                                                    {'name': 'delivered',
-                                                     'example': '10',
-                                                     'description': 'Search/filter delivered count. Range filters are '
-                                                                    'preferred for numeric stats.'}]},
-                             {'id': 'campaign-detail',
-                              'title': 'Campaign Detail',
-                              'method': 'GET',
-                              'path': '/campaigns/{campaign_id}',
-                              'purpose': 'Fetch one campaign by campaign ID with master fields, summary statistics, '
-                                         'and detailed recipient groups.',
+                                                   'message': 'Focus report fetched successfully',
+                                                   'meta': {'generated_at': '2026-07-23T11:30:00+00:00',
+                                                            'mode': 'protected',
+                                                            'schema_version': 'logiklu_focus_agent_report.v1'},
+                                                   'data': {'report': {'schema_version': 'logiklu_focus_agent_report.v1',
+                                                                       'agent_report_id': 1,
+                                                                       'source_report_id': 24,
+                                                                       'report_uid': 'FR202607230202057751',
+                                                                       'report_batch_uid': 'FB202607230202053780',
+                                                                       'executive_snapshot': {'summary_bullets': ['10 '
+                                                                                                                  'companies '
+                                                                                                                  'showed '
+                                                                                                                  'high '
+                                                                                                                  'priority '
+                                                                                                                  'engagement '
+                                                                                                                  'signals.',
+                                                                                                                  '2 '
+                                                                                                                  'companies '
+                                                                                                                  'showed '
+                                                                                                                  'high '
+                                                                                                                  'interest '
+                                                                                                                  'engagement '
+                                                                                                                  'signals.',
+                                                                                                                  'LKU '
+                                                                                                                  ': '
+                                                                                                                  '3D '
+                                                                                                                  'Sensing '
+                                                                                                                  'Technology '
+                                                                                                                  'Solutions '
+                                                                                                                  'and '
+                                                                                                                  'NanoResolution '
+                                                                                                                  'MRS '
+                                                                                                                  'Sensor '
+                                                                                                                  'were '
+                                                                                                                  'the '
+                                                                                                                  'most '
+                                                                                                                  'visited '
+                                                                                                                  'pages '
+                                                                                                                  'during '
+                                                                                                                  'the '
+                                                                                                                  'reporting '
+                                                                                                                  'period.',
+                                                                                                                  '73 '
+                                                                                                                  'companies '
+                                                                                                                  'returned '
+                                                                                                                  'during '
+                                                                                                                  'the '
+                                                                                                                  'reporting '
+                                                                                                                  'period.'],
+                                                                                              'high_interest_company_count': 2,
+                                                                                              'high_priority_company_count': 10},
+                                                                       'buyer_intent_snapshot': {'start_date': '2026-06-24',
+                                                                                                 'end_date': '2026-07-23',
+                                                                                                 'dataset_period': 30,
+                                                                                                 'summary_bullets': ['Measurable '
+                                                                                                                     'Interests '
+                                                                                                                     ': '
+                                                                                                                     '136 '
+                                                                                                                     'companies '
+                                                                                                                     'compared.',
+                                                                                                                     'Total '
+                                                                                                                     'High '
+                                                                                                                     'Priority '
+                                                                                                                     'marked '
+                                                                                                                     'companies '
+                                                                                                                     ': '
+                                                                                                                     '10.',
+                                                                                                                     'Activity '
+                                                                                                                     'Windows '
+                                                                                                                     ': '
+                                                                                                                     '30 '
+                                                                                                                     'Days '
+                                                                                                                     '(2026-06-24 '
+                                                                                                                     'to '
+                                                                                                                     '2026-07-23)'],
+                                                                                                 'activity_window_text': 'Activity '
+                                                                                                                         'Windows '
+                                                                                                                         ': '
+                                                                                                                         '30 '
+                                                                                                                         'Days '
+                                                                                                                         '(2026-06-24 '
+                                                                                                                         'to '
+                                                                                                                         '2026-07-23)',
+                                                                                                 'measurable_interests': 136,
+                                                                                                 'high_priority_company_count': 10},
+                                                                       'priority_account_count': 1,
+                                                                       'interacted_contact_count': 1,
+                                                                       'priority_accounts': [{'agent_report_account_id': 1,
+                                                                                              'account_id': 1094,
+                                                                                              'priority_rank': 1,
+                                                                                              'account': {'account_id': 1094,
+                                                                                                          'name': 'LogiKlu',
+                                                                                                          'website': 'www.lkw.com',
+                                                                                                          'location': {'city': '',
+                                                                                                                       'state': '',
+                                                                                                                       'country': ''},
+                                                                                                          'snapshot': {}},
+                                                                                              'source': {'source_company_log_id': 221,
+                                                                                                         'source_type': 'focus_report_company_log',
+                                                                                                         'source_summary': 'Source '
+                                                                                                                           'generated '
+                                                                                                                           'from '
+                                                                                                                           'Focus '
+                                                                                                                           'report '
+                                                                                                                           'company '
+                                                                                                                           'log '
+                                                                                                                           'and '
+                                                                                                                           'posted '
+                                                                                                                           'Agentic '
+                                                                                                                           'AI '
+                                                                                                                           'explanation.',
+                                                                                                         'source_json': {}},
+                                                                                              'final_explanation': {'engagement_pattern': [{'label': 'Conversion '
+                                                                                                                                                     'Interaction',
+                                                                                                                                            'explanation': 'The '
+                                                                                                                                                           'account '
+                                                                                                                                                           'submitted '
+                                                                                                                                                           'the '
+                                                                                                                                                           'Try '
+                                                                                                                                                           'LogiKlu '
+                                                                                                                                                           'form '
+                                                                                                                                                           'and '
+                                                                                                                                                           'downloaded '
+                                                                                                                                                           'ETT '
+                                                                                                                                                           'Proposal '
+                                                                                                                                                           'during '
+                                                                                                                                                           'the '
+                                                                                                                                                           'reporting '
+                                                                                                                                                           'period.'}],
+                                                                                                                    'why_company_matters': ['Submitted '
+                                                                                                                                            'Try '
+                                                                                                                                            'LogiKlu '
+                                                                                                                                            'form.',
+                                                                                                                                            'Downloaded '
+                                                                                                                                            'ETT '
+                                                                                                                                            'Proposal.',
+                                                                                                                                            'Returned '
+                                                                                                                                            'across '
+                                                                                                                                            'multiple '
+                                                                                                                                            'visits.'],
+                                                                                                                    'account_insight_summary': 'The '
+                                                                                                                                               'account '
+                                                                                                                                               'submitted '
+                                                                                                                                               'the '
+                                                                                                                                               'Try '
+                                                                                                                                               'LogiKlu '
+                                                                                                                                               'form, '
+                                                                                                                                               'downloaded '
+                                                                                                                                               'ETT '
+                                                                                                                                               'Proposal, '
+                                                                                                                                               'and '
+                                                                                                                                               'returned '
+                                                                                                                                               'during '
+                                                                                                                                               'the '
+                                                                                                                                               'reporting '
+                                                                                                                                               'window.'},
+                                                                                              'engagement_pattern': [{'label': 'Conversion '
+                                                                                                                               'Interaction',
+                                                                                                                      'explanation': 'The '
+                                                                                                                                     'account '
+                                                                                                                                     'submitted '
+                                                                                                                                     'the '
+                                                                                                                                     'Try '
+                                                                                                                                     'LogiKlu '
+                                                                                                                                     'form '
+                                                                                                                                     'and '
+                                                                                                                                     'downloaded '
+                                                                                                                                     'ETT '
+                                                                                                                                     'Proposal '
+                                                                                                                                     'during '
+                                                                                                                                     'the '
+                                                                                                                                     'reporting '
+                                                                                                                                     'period.'}],
+                                                                                              'why_company_matters': ['Submitted '
+                                                                                                                      'Try '
+                                                                                                                      'LogiKlu '
+                                                                                                                      'form.',
+                                                                                                                      'Downloaded '
+                                                                                                                      'ETT '
+                                                                                                                      'Proposal.',
+                                                                                                                      'Returned '
+                                                                                                                      'across '
+                                                                                                                      'multiple '
+                                                                                                                      'visits.'],
+                                                                                              'account_insight_summary': 'The '
+                                                                                                                         'account '
+                                                                                                                         'submitted '
+                                                                                                                         'the '
+                                                                                                                         'Try '
+                                                                                                                         'LogiKlu '
+                                                                                                                         'form, '
+                                                                                                                         'downloaded '
+                                                                                                                         'ETT '
+                                                                                                                         'Proposal, '
+                                                                                                                         'and '
+                                                                                                                         'returned '
+                                                                                                                         'during '
+                                                                                                                         'the '
+                                                                                                                         'reporting '
+                                                                                                                         'window.',
+                                                                                              'created_date': '2026-07-23 '
+                                                                                                              '11:30:00'}],
+                                                                       'interacted_contacts': [{'agent_report_contact_id': 1,
+                                                                                                'account_id': 1094,
+                                                                                                'contact_id': 118,
+                                                                                                'name': 'Jhilom Haldar',
+                                                                                                'email': 'jhilom@example.com',
+                                                                                                'phone': '+91 '
+                                                                                                         '9876543210',
+                                                                                                'interaction_details': {'summary': 'Contact '
+                                                                                                                                   'submitted '
+                                                                                                                                   'form '
+                                                                                                                                   'and '
+                                                                                                                                   'downloaded '
+                                                                                                                                   'proposal.',
+                                                                                                                        'interaction_types': ['lead_form_submission',
+                                                                                                                                              'asset_downloaded']},
+                                                                                                'interaction_summary': 'Contact '
+                                                                                                                       'submitted '
+                                                                                                                       'form '
+                                                                                                                       'and '
+                                                                                                                       'downloaded '
+                                                                                                                       'proposal.',
+                                                                                                'contact_snapshot': {},
+                                                                                                'created_date': '2026-07-23 '
+                                                                                                                '11:30:00'}],
+                                                                       'contacts_by_account': {'1094': [{'agent_report_contact_id': 1,
+                                                                                                         'account_id': 1094,
+                                                                                                         'contact_id': 118,
+                                                                                                         'name': 'Jhilom '
+                                                                                                                 'Haldar',
+                                                                                                         'email': 'jhilom@example.com',
+                                                                                                         'phone': '+91 '
+                                                                                                                  '9876543210',
+                                                                                                         'interaction_details': {'summary': 'Contact '
+                                                                                                                                            'submitted '
+                                                                                                                                            'form '
+                                                                                                                                            'and '
+                                                                                                                                            'downloaded '
+                                                                                                                                            'proposal.',
+                                                                                                                                 'interaction_types': ['lead_form_submission',
+                                                                                                                                                       'asset_downloaded']},
+                                                                                                         'interaction_summary': 'Contact '
+                                                                                                                                'submitted '
+                                                                                                                                'form '
+                                                                                                                                'and '
+                                                                                                                                'downloaded '
+                                                                                                                                'proposal.',
+                                                                                                         'contact_snapshot': {},
+                                                                                                         'created_date': '2026-07-23 '
+                                                                                                                         '11:30:00'}]}}}}},
+                             {'id': 'focus-report-update-current',
+                              'title': 'Update Current Focus Report',
+                              'method': 'POST',
+                              'path': '/focus/report',
+                              'purpose': 'Replace the current Agentic AI Focus report. This is intended for Agentic '
+                                         'AI/report-generation systems. The API deletes the previous current AI report '
+                                         'rows and inserts the newly posted master report, priority accounts, and '
+                                         'interacted contacts in one transaction.',
                               'auth_type': 'bearer',
-                              'request_type': 'Path Parameter',
-                              'parameters': [{'name': 'campaign_id',
+                              'request_type': 'JSON Body',
+                              'parameters': [{'name': 'report_id',
                                               'type': 'integer',
                                               'required': 'Yes',
-                                              'example': '1',
-                                              'description': 'Campaign ID to fetch.'},
-                                             {'name': 'include_details',
-                                              'type': 'boolean',
+                                              'example': '24',
+                                              'description': 'Source Focus report ID from lk_focus_report_master.'},
+                                             {'name': 'report_uid',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'FR202607230202057751',
+                                              'description': 'Source Focus report UID.'},
+                                             {'name': 'report_batch_uid',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'FB202607230202053780',
+                                              'description': 'Source Focus report batch UID.'},
+                                             {'name': 'executive_snapshot',
+                                              'type': 'object',
+                                              'required': 'Yes',
+                                              'example': '{summary_bullets: [], high_priority_company_count: 10}',
+                                              'description': 'Executive snapshot JSON prepared by Agentic AI or copied '
+                                                             'from master report data.'},
+                                             {'name': 'buyer_intent_snapshot_json',
+                                              'type': 'object',
+                                              'required': 'Yes',
+                                              'example': '{dataset_period: 30, measurable_interests: 136}',
+                                              'description': 'Buyer-intent snapshot JSON for report-level activity '
+                                                             'window and intent summary.'},
+                                             {'name': 'priority_accounts',
+                                              'type': 'array',
                                               'required': 'No',
-                                              'example': 'true',
-                                              'description': 'When true, returns detailed_stat contact lists. Use '
-                                                             'false for a lighter detail response.'}],
-                              'examples': [{'title': 'Campaign detail',
-                                            'description': 'Fetch one campaign by ID.',
-                                            'path': '/campaigns/1',
-                                            'query': {}},
-                                           {'title': 'Campaign detail without detailed stats',
-                                            'description': 'Fetch one campaign with summary stats only.',
-                                            'path': '/campaigns/1',
-                                            'query': {'include_details': 'false'}}],
+                                              'example': '[{account_id: 1094, final_explanation: {...}}]',
+                                              'description': 'Priority account list. Each item requires account_id and '
+                                                             'may include source and final_explanation.'},
+                                             {'name': 'priority_accounts[].account_id',
+                                              'type': 'integer',
+                                              'required': 'Yes',
+                                              'example': '1094',
+                                              'description': 'CRM account ID. Internally this maps to lead_id in old '
+                                                             'Focus tables.'},
+                                             {'name': 'priority_accounts[].source',
+                                              'type': 'object',
+                                              'required': 'No',
+                                              'example': '{source_company_log_id: 221, source_type: '
+                                                         'focus_report_company_log}',
+                                              'description': 'Optional company/account evidence source information.'},
+                                             {'name': 'priority_accounts[].final_explanation',
+                                              'type': 'object',
+                                              'required': 'No',
+                                              'example': '{engagement_pattern: [], why_company_matters: [], '
+                                                         'account_insight_summary: ...}',
+                                              'description': 'Final AI explanation for this company/account.'},
+                                             {'name': 'contacts',
+                                              'type': 'array',
+                                              'required': 'No',
+                                              'example': '[{account_id: 1094, contact_id: 118, name: ..., '
+                                                         'interaction_details: {...}}]',
+                                              'description': 'Interacted contacts by account/company.'},
+                                             {'name': 'contacts[].account_id',
+                                              'type': 'integer',
+                                              'required': 'Yes',
+                                              'example': '1094',
+                                              'description': 'Account/company ID for the contact interaction.'},
+                                             {'name': 'contacts[].contact_id',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '118',
+                                              'description': 'CRM contact ID when available.'},
+                                             {'name': 'contacts[].interaction_details',
+                                              'type': 'object',
+                                              'required': 'No',
+                                              'example': '{summary: Contact submitted form}',
+                                              'description': 'Contact interaction details posted by Agentic AI.'}],
+                              'body': {'report_id': 24,
+                                       'report_uid': 'FR202607230202057751',
+                                       'report_batch_uid': 'FB202607230202053780',
+                                       'executive_snapshot': {'summary_bullets': ['10 companies showed high priority '
+                                                                                  'engagement signals.',
+                                                                                  '2 companies showed high interest '
+                                                                                  'engagement signals.',
+                                                                                  'LKU : 3D Sensing Technology '
+                                                                                  'Solutions and NanoResolution MRS '
+                                                                                  'Sensor were the most visited pages '
+                                                                                  'during the reporting period.',
+                                                                                  '73 companies returned during the '
+                                                                                  'reporting period.'],
+                                                              'high_interest_company_count': 2,
+                                                              'high_priority_company_count': 10},
+                                       'buyer_intent_snapshot_json': {'start_date': '2026-06-24',
+                                                                      'end_date': '2026-07-23',
+                                                                      'dataset_period': 30,
+                                                                      'summary_bullets': ['Measurable Interests : 136 '
+                                                                                          'companies compared.',
+                                                                                          'Total High Priority marked '
+                                                                                          'companies : 10.',
+                                                                                          'Activity Windows : 30 Days '
+                                                                                          '(2026-06-24 to 2026-07-23)'],
+                                                                      'activity_window_text': 'Activity Windows : 30 '
+                                                                                              'Days (2026-06-24 to '
+                                                                                              '2026-07-23)',
+                                                                      'measurable_interests': 136,
+                                                                      'high_priority_company_count': 10},
+                                       'priority_accounts': [{'account_id': 1094,
+                                                              'source': {'source_company_log_id': 221,
+                                                                         'source_type': 'focus_report_company_log',
+                                                                         'source_summary': 'Source generated from '
+                                                                                           'Focus report company log '
+                                                                                           'and posted Agentic AI '
+                                                                                           'explanation.',
+                                                                         'source_json': {'source_table': 'lk_focus_report_company_log',
+                                                                                         'track_ids': [21198,
+                                                                                                       23666,
+                                                                                                       23862,
+                                                                                                       24029],
+                                                                                         'signals': ['lead_form_submitted',
+                                                                                                     'asset_downloaded',
+                                                                                                     'video_views',
+                                                                                                     'repeat_visits']}},
+                                                              'final_explanation': {'engagement_pattern': [{'label': 'Conversion '
+                                                                                                                     'Interaction',
+                                                                                                            'explanation': 'The '
+                                                                                                                           'account '
+                                                                                                                           'submitted '
+                                                                                                                           'the '
+                                                                                                                           'Try '
+                                                                                                                           'LogiKlu '
+                                                                                                                           'form '
+                                                                                                                           'and '
+                                                                                                                           'downloaded '
+                                                                                                                           'ETT '
+                                                                                                                           'Proposal '
+                                                                                                                           'during '
+                                                                                                                           'the '
+                                                                                                                           'reporting '
+                                                                                                                           'period.'}],
+                                                                                    'why_company_matters': ['Submitted '
+                                                                                                            'Try '
+                                                                                                            'LogiKlu '
+                                                                                                            'form.',
+                                                                                                            'Downloaded '
+                                                                                                            'ETT '
+                                                                                                            'Proposal.',
+                                                                                                            'Returned '
+                                                                                                            'across '
+                                                                                                            'multiple '
+                                                                                                            'visits.'],
+                                                                                    'account_insight_summary': 'The '
+                                                                                                               'account '
+                                                                                                               'submitted '
+                                                                                                               'the '
+                                                                                                               'Try '
+                                                                                                               'LogiKlu '
+                                                                                                               'form, '
+                                                                                                               'downloaded '
+                                                                                                               'ETT '
+                                                                                                               'Proposal, '
+                                                                                                               'and '
+                                                                                                               'returned '
+                                                                                                               'during '
+                                                                                                               'the '
+                                                                                                               'reporting '
+                                                                                                               'window.'}}],
+                                       'contacts': [{'account_id': 1094,
+                                                     'contact_id': 118,
+                                                     'name': 'Jhilom Haldar',
+                                                     'email': 'jhilom@example.com',
+                                                     'phone': '+91 9876543210',
+                                                     'interaction_details': {'summary': 'Contact submitted form and '
+                                                                                        'downloaded proposal.',
+                                                                             'interaction_types': ['lead_form_submission',
+                                                                                                   'asset_downloaded']}}]},
+                              'examples': [{'title': 'Replace current Focus report',
+                                            'description': 'Replace the current Agentic AI Focus report for the '
+                                                           'authenticated client.',
+                                            'path': '/focus/report',
+                                            'body': {'report_id': 24,
+                                                     'report_uid': 'FR202607230202057751',
+                                                     'report_batch_uid': 'FB202607230202053780',
+                                                     'executive_snapshot': {'summary_bullets': ['10 companies showed '
+                                                                                                'high priority '
+                                                                                                'engagement signals.',
+                                                                                                '2 companies showed '
+                                                                                                'high interest '
+                                                                                                'engagement signals.',
+                                                                                                'LKU : 3D Sensing '
+                                                                                                'Technology Solutions '
+                                                                                                'and NanoResolution '
+                                                                                                'MRS Sensor were the '
+                                                                                                'most visited pages '
+                                                                                                'during the reporting '
+                                                                                                'period.',
+                                                                                                '73 companies returned '
+                                                                                                'during the reporting '
+                                                                                                'period.'],
+                                                                            'high_interest_company_count': 2,
+                                                                            'high_priority_company_count': 10},
+                                                     'buyer_intent_snapshot_json': {'start_date': '2026-06-24',
+                                                                                    'end_date': '2026-07-23',
+                                                                                    'dataset_period': 30,
+                                                                                    'summary_bullets': ['Measurable '
+                                                                                                        'Interests : '
+                                                                                                        '136 companies '
+                                                                                                        'compared.',
+                                                                                                        'Total High '
+                                                                                                        'Priority '
+                                                                                                        'marked '
+                                                                                                        'companies : '
+                                                                                                        '10.',
+                                                                                                        'Activity '
+                                                                                                        'Windows : 30 '
+                                                                                                        'Days '
+                                                                                                        '(2026-06-24 '
+                                                                                                        'to '
+                                                                                                        '2026-07-23)'],
+                                                                                    'activity_window_text': 'Activity '
+                                                                                                            'Windows : '
+                                                                                                            '30 Days '
+                                                                                                            '(2026-06-24 '
+                                                                                                            'to '
+                                                                                                            '2026-07-23)',
+                                                                                    'measurable_interests': 136,
+                                                                                    'high_priority_company_count': 10},
+                                                     'priority_accounts': [{'account_id': 1094,
+                                                                            'source': {'source_company_log_id': 221,
+                                                                                       'source_type': 'focus_report_company_log',
+                                                                                       'source_summary': 'Source '
+                                                                                                         'generated '
+                                                                                                         'from Focus '
+                                                                                                         'report '
+                                                                                                         'company log '
+                                                                                                         'and posted '
+                                                                                                         'Agentic AI '
+                                                                                                         'explanation.',
+                                                                                       'source_json': {'source_table': 'lk_focus_report_company_log',
+                                                                                                       'track_ids': [21198,
+                                                                                                                     23666,
+                                                                                                                     23862,
+                                                                                                                     24029],
+                                                                                                       'signals': ['lead_form_submitted',
+                                                                                                                   'asset_downloaded',
+                                                                                                                   'video_views',
+                                                                                                                   'repeat_visits']}},
+                                                                            'final_explanation': {'engagement_pattern': [{'label': 'Conversion '
+                                                                                                                                   'Interaction',
+                                                                                                                          'explanation': 'The '
+                                                                                                                                         'account '
+                                                                                                                                         'submitted '
+                                                                                                                                         'the '
+                                                                                                                                         'Try '
+                                                                                                                                         'LogiKlu '
+                                                                                                                                         'form '
+                                                                                                                                         'and '
+                                                                                                                                         'downloaded '
+                                                                                                                                         'ETT '
+                                                                                                                                         'Proposal '
+                                                                                                                                         'during '
+                                                                                                                                         'the '
+                                                                                                                                         'reporting '
+                                                                                                                                         'period.'}],
+                                                                                                  'why_company_matters': ['Submitted '
+                                                                                                                          'Try '
+                                                                                                                          'LogiKlu '
+                                                                                                                          'form.',
+                                                                                                                          'Downloaded '
+                                                                                                                          'ETT '
+                                                                                                                          'Proposal.',
+                                                                                                                          'Returned '
+                                                                                                                          'across '
+                                                                                                                          'multiple '
+                                                                                                                          'visits.'],
+                                                                                                  'account_insight_summary': 'The '
+                                                                                                                             'account '
+                                                                                                                             'submitted '
+                                                                                                                             'the '
+                                                                                                                             'Try '
+                                                                                                                             'LogiKlu '
+                                                                                                                             'form, '
+                                                                                                                             'downloaded '
+                                                                                                                             'ETT '
+                                                                                                                             'Proposal, '
+                                                                                                                             'and '
+                                                                                                                             'returned '
+                                                                                                                             'during '
+                                                                                                                             'the '
+                                                                                                                             'reporting '
+                                                                                                                             'window.'}}],
+                                                     'contacts': [{'account_id': 1094,
+                                                                   'contact_id': 118,
+                                                                   'name': 'Jhilom Haldar',
+                                                                   'email': 'jhilom@example.com',
+                                                                   'phone': '+91 9876543210',
+                                                                   'interaction_details': {'summary': 'Contact '
+                                                                                                      'submitted form '
+                                                                                                      'and downloaded '
+                                                                                                      'proposal.',
+                                                                                           'interaction_types': ['lead_form_submission',
+                                                                                                                 'asset_downloaded']}}]}}],
                               'response_example': {'status': 'success',
-                                                   'message': 'Campaign detail fetched successfully',
-                                                   'meta': {'generated_at': '2026-07-04T10:00:00+00:00',
-                                                            'campaign_id': 1,
-                                                            'include_details': True},
-                                                   'data': {'schema_version': 'logiklu_campaign.v1',
-                                                            'campaign': {'campaign_id': 1,
-                                                                         'campaign_provider_id': '1',
-                                                                         'campaign_name': 'Welcome Campaign',
-                                                                         'campaign_subject': 'Welcome to LogiKlu',
-                                                                         'campaign_sender': {'name': 'Alex Hans',
-                                                                                             'email': 'logikluenterprise@gmail.com'},
-                                                                         'created_date': '2026-07-01 10:30:00',
-                                                                         'sent_date': '2026-07-01 12:00:00',
-                                                                         'stats': {'total_recipients': 27,
-                                                                                   'delivered': 25,
-                                                                                   'not_opened': 4,
-                                                                                   'opened': 9,
-                                                                                   'clicked': 12,
-                                                                                   'hard_bounced': 1,
-                                                                                   'soft_bounced': 1,
-                                                                                   'total_bounced': 2,
-                                                                                   'unsubscribed': 0,
-                                                                                   'open_rate': 36.0,
-                                                                                   'click_rate': 48.0,
-                                                                                   'bounce_rate': 7.41,
-                                                                                   'unsubscribed_rate': 0.0},
-                                                                         'detailed_stat': {'delivered': [{'contact_id': 329,
-                                                                                                          'name': 'Suzanne '
-                                                                                                                  'Burris',
-                                                                                                          'email': 'suzanne.burris@tokoelectron.com'}],
-                                                                                           'not_opened': [],
-                                                                                           'opened': [],
-                                                                                           'clicked': [],
-                                                                                           'hard_bounced': [],
-                                                                                           'soft_bounced': [],
-                                                                                           'total_bounced': [],
-                                                                                           'unsubscribed': []}}}}}]},
+                                                   'message': 'Focus report updated successfully',
+                                                   'meta': {'generated_at': '2026-07-23T11:30:00+00:00',
+                                                            'mode': 'protected',
+                                                            'schema_version': 'logiklu_focus_agent_report.v1'},
+                                                   'data': {'report': {'schema_version': 'logiklu_focus_agent_report.v1',
+                                                                       'agent_report_id': 1,
+                                                                       'source_report_id': 24,
+                                                                       'report_uid': 'FR202607230202057751',
+                                                                       'report_batch_uid': 'FB202607230202053780',
+                                                                       'priority_account_count': 1,
+                                                                       'interacted_contact_count': 1,
+                                                                       'updated_at': '2026-07-23 11:30:00'}}}}]},
               {'id': 'leadforms',
                'title': 'Leadforms',
                'description': 'Use Leadforms APIs to read leadform definitions, embed configurations, embed settings, '
@@ -2510,6 +2603,514 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                                                                                                                    '10:20:00',
                                                                                                             'last_submission_at': '2026-06-20 '
                                                                                                                                   '16:35:00'}}]}}}}]},
+              {'id': 'campaigns',
+               'title': 'Campaigns',
+               'description': 'Use Campaign APIs to read email campaign master data, delivery/open/click/bounce '
+                              'statistics, and recipient-level detailed stats.',
+               'endpoints': [{'id': 'campaign-list',
+                              'title': 'Campaign List',
+                              'method': 'GET',
+                              'path': '/campaigns',
+                              'purpose': 'Fetch campaigns with campaign master fields, summary statistics, detailed '
+                                         'recipient groups, dynamic search, contact search, stat range filters, '
+                                         'sorting, and page/per_page pagination.',
+                              'auth_type': 'bearer',
+                              'request_type': 'Query Parameters',
+                              'parameters': [{'name': 'page',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '1',
+                                              'description': 'Page number. Starts from 1. Default is 1.'},
+                                             {'name': 'per_page',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '10',
+                                              'description': 'Number of campaigns per page. Maximum value is 100.'},
+                                             {'name': 'search',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'welcome',
+                                              'description': 'General search across campaign name, subject, content, '
+                                                             'sender, provider ID, list ID, and contact fields where '
+                                                             'supported.'},
+                                             {'name': 'search_by',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'contact',
+                                              'description': 'Search only one selected field. Example values: '
+                                                             'campaign_name, subject, content, sender, list_id, '
+                                                             'contact.'},
+                                             {'name': 'filters',
+                                              'type': 'JSON string',
+                                              'required': 'No',
+                                              'example': '[{"field":"clicked","operator":"gte","value":5}]',
+                                              'description': 'Advanced JSON filters for field/operator/value '
+                                                             'filtering. Useful for eq, like, in, from, to, gte, lte, '
+                                                             'and between style filtering.'},
+                                             {'name': 'include_details',
+                                              'type': 'boolean',
+                                              'required': 'No',
+                                              'example': 'true',
+                                              'description': 'When true, returns detailed_stat contact lists. Use '
+                                                             'false for a lighter summary response.'},
+                                             {'name': 'campaign_id',
+                                              'type': 'integer/string',
+                                              'required': 'No',
+                                              'example': '1',
+                                              'description': 'Filter by exact campaign ID. Comma-separated IDs are '
+                                                             'supported.'},
+                                             {'name': 'campaign_provider_id',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': '6001401',
+                                              'description': 'Filter by email provider campaign ID.'},
+                                             {'name': 'campaign_name',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Welcome',
+                                              'description': 'Filter by campaign name.'},
+                                             {'name': 'campaignname',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Welcome',
+                                              'description': 'Alias for campaign_name.'},
+                                             {'name': 'subject',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Welcome',
+                                              'description': 'Filter by campaign subject.'},
+                                             {'name': 'content',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'offer',
+                                              'description': 'Filter by campaign HTML/text content.'},
+                                             {'name': 'sender',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'logikluenterprise@gmail.com',
+                                              'description': 'Filter by campaign sender name or sender email.'},
+                                             {'name': 'list_id',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': '1',
+                                              'description': 'Filter by campaign list ID.'},
+                                             {'name': 'search_by_list_name',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': '1',
+                                              'description': 'Search campaign list identifier. If list master data is '
+                                                             'later available, this can search list name.'},
+                                             {'name': 'search_by_contact',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'suzanne',
+                                              'description': 'Filter campaigns where any recipient/contact name, '
+                                                             'email, or supported contact field matches this value.'},
+                                             {'name': 'status',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'sent',
+                                              'description': 'Filter by campaign status. Example values: draft, sent, '
+                                                             'scheduled.'},
+                                             {'name': 'active_status',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'created',
+                                              'description': 'Filter by active_status. Example values: created, '
+                                                             'linked.'},
+                                             {'name': 'created_date_from',
+                                              'type': 'date/datetime',
+                                              'required': 'No',
+                                              'example': '2026-07-01',
+                                              'description': 'Return campaigns created on or after this date/time.'},
+                                             {'name': 'created_date_to',
+                                              'type': 'date/datetime',
+                                              'required': 'No',
+                                              'example': '2026-07-31',
+                                              'description': 'Return campaigns created on or before this date/time.'},
+                                             {'name': 'sent_date_from',
+                                              'type': 'date/datetime',
+                                              'required': 'No',
+                                              'example': '2026-07-01',
+                                              'description': 'Return campaigns sent on or after this date/time. Sent '
+                                                             'date is based on scheduled_date/updated_at where '
+                                                             'available.'},
+                                             {'name': 'sent_date_to',
+                                              'type': 'date/datetime',
+                                              'required': 'No',
+                                              'example': '2026-07-31',
+                                              'description': 'Return campaigns sent on or before this date/time.'},
+                                             {'name': 'sort_by',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'highest_clicked',
+                                              'description': 'Sort campaigns. Examples: created_date, campaign_name, '
+                                                             'highest_clicked, highest_opened, highest_delivered, '
+                                                             'clicked, opened, delivered, total_bounced.'},
+                                             {'name': 'sort_order',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'desc',
+                                              'description': 'Sort direction for supported sort_by values. Allowed '
+                                                             'values: asc, desc.'},
+                                             {'name': 'total_recipients_min',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '10',
+                                              'description': 'Minimum total recipient count.'},
+                                             {'name': 'total_recipients_max',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '100',
+                                              'description': 'Maximum total recipient count.'},
+                                             {'name': 'delivered_min',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '10',
+                                              'description': 'Minimum total delivered count. delivered = not_opened + '
+                                                             'opened + clicked.'},
+                                             {'name': 'delivered_max',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '100',
+                                              'description': 'Maximum total delivered count.'},
+                                             {'name': 'not_opened_min',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '1',
+                                              'description': 'Minimum not opened count. not_opened means raw event '
+                                                             'delivered only.'},
+                                             {'name': 'not_opened_max',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '50',
+                                              'description': 'Maximum not opened count.'},
+                                             {'name': 'opened_min',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '5',
+                                              'description': 'Minimum opened count.'},
+                                             {'name': 'opened_max',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '20',
+                                              'description': 'Maximum opened count.'},
+                                             {'name': 'clicked_min',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '5',
+                                              'description': 'Minimum clicked count.'},
+                                             {'name': 'clicked_max',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '20',
+                                              'description': 'Maximum clicked count.'},
+                                             {'name': 'hard_bounced_min',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '0',
+                                              'description': 'Minimum hard bounced count.'},
+                                             {'name': 'hard_bounced_max',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '10',
+                                              'description': 'Maximum hard bounced count.'},
+                                             {'name': 'soft_bounced_min',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '0',
+                                              'description': 'Minimum soft bounced count.'},
+                                             {'name': 'soft_bounced_max',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '10',
+                                              'description': 'Maximum soft bounced count.'},
+                                             {'name': 'total_bounced_min',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '1',
+                                              'description': 'Minimum total bounced count. total_bounced = '
+                                                             'hard_bounced + soft_bounced.'},
+                                             {'name': 'total_bounced_max',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '10',
+                                              'description': 'Maximum total bounced count.'},
+                                             {'name': 'unsubscribed_min',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '0',
+                                              'description': 'Minimum unsubscribed count.'},
+                                             {'name': 'unsubscribed_max',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '10',
+                                              'description': 'Maximum unsubscribed count.'}],
+                              'examples': [{'title': 'First page',
+                                            'description': 'Fetch the first page of campaigns.',
+                                            'path': '/campaigns',
+                                            'query': {'page': 1, 'per_page': 10}},
+                                           {'title': 'General campaign search',
+                                            'description': 'Search campaigns across campaign name, subject, content, '
+                                                           'sender, list, and contact fields where supported.',
+                                            'path': '/campaigns',
+                                            'query': {'search': 'welcome', 'page': 1, 'per_page': 10}},
+                                           {'title': 'Search by campaign name',
+                                            'description': 'Return campaigns whose campaign name contains Welcome.',
+                                            'path': '/campaigns',
+                                            'query': {'campaign_name': 'Welcome', 'page': 1, 'per_page': 10}},
+                                           {'title': 'Search by subject and sender',
+                                            'description': 'Combine subject and sender filters. Direct filters are '
+                                                           'combined using AND logic.',
+                                            'path': '/campaigns',
+                                            'query': {'subject': 'Welcome',
+                                                      'sender': 'logikluenterprise@gmail.com',
+                                                      'page': 1,
+                                                      'per_page': 10}},
+                                           {'title': 'Search by contact',
+                                            'description': 'Return campaigns where any recipient/contact matches the '
+                                                           'supplied value.',
+                                            'path': '/campaigns',
+                                            'query': {'search_by_contact': 'suzanne', 'page': 1, 'per_page': 10}},
+                                           {'title': 'Highest clicked campaigns',
+                                            'description': 'Sort campaigns by clicked count descending.',
+                                            'path': '/campaigns',
+                                            'query': {'sort_by': 'highest_clicked', 'page': 1, 'per_page': 10}},
+                                           {'title': 'Clicked range filter',
+                                            'description': 'Return campaigns with clicked count between 5 and 20.',
+                                            'path': '/campaigns',
+                                            'query': {'clicked_min': 5, 'clicked_max': 20, 'page': 1, 'per_page': 10}},
+                                           {'title': 'Delivered and opened range filter',
+                                            'description': 'Combine delivered and opened stat range filters.',
+                                            'path': '/campaigns',
+                                            'query': {'delivered_min': 10, 'opened_min': 5, 'page': 1, 'per_page': 10}},
+                                           {'title': 'Created date range',
+                                            'description': 'Return campaigns created within a selected date range.',
+                                            'path': '/campaigns',
+                                            'query': {'created_date_from': '2026-07-01',
+                                                      'created_date_to': '2026-07-31',
+                                                      'page': 1,
+                                                      'per_page': 10}},
+                                           {'title': 'Advanced JSON filter',
+                                            'description': 'Use filters for field/operator/value style filtering.',
+                                            'path': '/campaigns',
+                                            'query': {'filters': '[{"field":"clicked","operator":"gte","value":5}]',
+                                                      'page': 1,
+                                                      'per_page': 10}}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'Campaigns fetched successfully',
+                                                   'meta': {'generated_at': '2026-07-04T10:00:00+00:00',
+                                                            'search': None,
+                                                            'search_by': None,
+                                                            'include_details': True,
+                                                            'applied_filters': [],
+                                                            'sort_by': 'highest_clicked',
+                                                            'sort_order': 'desc',
+                                                            'page': 1,
+                                                            'per_page': 10,
+                                                            'offset': 0,
+                                                            'record_count': 1,
+                                                            'total_records': 1,
+                                                            'total_pages': 1,
+                                                            'has_next': False,
+                                                            'has_previous': False},
+                                                   'data': {'schema_version': 'logiklu_campaign.v1',
+                                                            'campaigns': [{'campaign_id': 1,
+                                                                           'campaign_provider_id': '1',
+                                                                           'campaign_name': 'Welcome Campaign',
+                                                                           'campaign_subject': 'Welcome to LogiKlu',
+                                                                           'campaign_sender': {'name': 'Alex Hans',
+                                                                                               'email': 'logikluenterprise@gmail.com'},
+                                                                           'created_date': '2026-07-01 10:30:00',
+                                                                           'sent_date': '2026-07-01 12:00:00',
+                                                                           'stats': {'total_recipients': 27,
+                                                                                     'delivered': 25,
+                                                                                     'not_opened': 4,
+                                                                                     'opened': 9,
+                                                                                     'clicked': 12,
+                                                                                     'hard_bounced': 1,
+                                                                                     'soft_bounced': 1,
+                                                                                     'total_bounced': 2,
+                                                                                     'unsubscribed': 0,
+                                                                                     'open_rate': 36.0,
+                                                                                     'click_rate': 48.0,
+                                                                                     'bounce_rate': 7.41,
+                                                                                     'unsubscribed_rate': 0.0},
+                                                                           'detailed_stat': {'delivered': [{'contact_id': 329,
+                                                                                                            'name': 'Suzanne '
+                                                                                                                    'Burris',
+                                                                                                            'email': 'suzanne.burris@tokoelectron.com'}],
+                                                                                             'not_opened': [],
+                                                                                             'opened': [],
+                                                                                             'clicked': [],
+                                                                                             'hard_bounced': [],
+                                                                                             'soft_bounced': [],
+                                                                                             'total_bounced': [],
+                                                                                             'unsubscribed': []}}]}},
+                              'multi_field_filters': [{'name': 'campaign_id',
+                                                       'example': '1',
+                                                       'description': 'Exact campaign ID. Comma-separated values are '
+                                                                      'supported.'},
+                                                      {'name': 'campaign_provider_id',
+                                                       'example': '6001401',
+                                                       'description': 'Provider-side campaign ID.'},
+                                                      {'name': 'campaign_name',
+                                                       'example': 'Welcome',
+                                                       'description': 'Campaign name.'},
+                                                      {'name': 'campaignname',
+                                                       'example': 'Welcome',
+                                                       'description': 'Alias for campaign_name.'},
+                                                      {'name': 'subject',
+                                                       'example': 'Welcome',
+                                                       'description': 'Campaign subject.'},
+                                                      {'name': 'content',
+                                                       'example': 'offer',
+                                                       'description': 'Campaign content.'},
+                                                      {'name': 'sender',
+                                                       'example': 'logikluenterprise@gmail.com',
+                                                       'description': 'Campaign sender name or email.'},
+                                                      {'name': 'list_id',
+                                                       'example': '1',
+                                                       'description': 'Campaign list ID.'},
+                                                      {'name': 'search_by_list_name',
+                                                       'example': '1',
+                                                       'description': 'Campaign list identifier / list search.'},
+                                                      {'name': 'search_by_contact',
+                                                       'example': 'suzanne',
+                                                       'description': 'Recipient/contact name, email, phone, or '
+                                                                      'supported contact field.'},
+                                                      {'name': 'status',
+                                                       'example': 'sent',
+                                                       'description': 'Campaign status.'},
+                                                      {'name': 'created_date_from',
+                                                       'example': '2026-07-01',
+                                                       'description': 'Created date lower bound.'},
+                                                      {'name': 'created_date_to',
+                                                       'example': '2026-07-31',
+                                                       'description': 'Created date upper bound.'},
+                                                      {'name': 'clicked_min',
+                                                       'example': '5',
+                                                       'description': 'Clicked count lower bound.'},
+                                                      {'name': 'clicked_max',
+                                                       'example': '20',
+                                                       'description': 'Clicked count upper bound.'},
+                                                      {'name': 'opened_min',
+                                                       'example': '5',
+                                                       'description': 'Opened count lower bound.'},
+                                                      {'name': 'delivered_min',
+                                                       'example': '10',
+                                                       'description': 'Delivered count lower bound.'},
+                                                      {'name': 'total_bounced_min',
+                                                       'example': '1',
+                                                       'description': 'Total bounced lower bound.'},
+                                                      {'name': 'sort_by',
+                                                       'example': 'highest_clicked',
+                                                       'description': 'Sort by a supported campaign/stat field.'}],
+                              'search_by_options': [{'name': 'campaign_name',
+                                                     'example': 'Welcome',
+                                                     'description': 'Search campaign name only.'},
+                                                    {'name': 'campaignname',
+                                                     'example': 'Welcome',
+                                                     'description': 'Alias for campaign_name.'},
+                                                    {'name': 'subject',
+                                                     'example': 'Welcome',
+                                                     'description': 'Search campaign subject only.'},
+                                                    {'name': 'content',
+                                                     'example': 'offer',
+                                                     'description': 'Search campaign content only.'},
+                                                    {'name': 'sender',
+                                                     'example': 'Alex',
+                                                     'description': 'Search sender JSON/name/email only.'},
+                                                    {'name': 'list_id',
+                                                     'example': '1',
+                                                     'description': 'Search list ID only.'},
+                                                    {'name': 'list_name',
+                                                     'example': '1',
+                                                     'description': 'Search list identifier/list name where '
+                                                                    'available.'},
+                                                    {'name': 'contact',
+                                                     'example': 'suzanne',
+                                                     'description': 'Search campaign recipients/contacts.'},
+                                                    {'name': 'status',
+                                                     'example': 'sent',
+                                                     'description': 'Search/filter campaign status.'},
+                                                    {'name': 'clicked',
+                                                     'example': '10',
+                                                     'description': 'Search/filter clicked count. Range filters are '
+                                                                    'preferred for numeric stats.'},
+                                                    {'name': 'opened',
+                                                     'example': '10',
+                                                     'description': 'Search/filter opened count. Range filters are '
+                                                                    'preferred for numeric stats.'},
+                                                    {'name': 'delivered',
+                                                     'example': '10',
+                                                     'description': 'Search/filter delivered count. Range filters are '
+                                                                    'preferred for numeric stats.'}]},
+                             {'id': 'campaign-detail',
+                              'title': 'Campaign Detail',
+                              'method': 'GET',
+                              'path': '/campaigns/{campaign_id}',
+                              'purpose': 'Fetch one campaign by campaign ID with master fields, summary statistics, '
+                                         'and detailed recipient groups.',
+                              'auth_type': 'bearer',
+                              'request_type': 'Path Parameter',
+                              'parameters': [{'name': 'campaign_id',
+                                              'type': 'integer',
+                                              'required': 'Yes',
+                                              'example': '1',
+                                              'description': 'Campaign ID to fetch.'},
+                                             {'name': 'include_details',
+                                              'type': 'boolean',
+                                              'required': 'No',
+                                              'example': 'true',
+                                              'description': 'When true, returns detailed_stat contact lists. Use '
+                                                             'false for a lighter detail response.'}],
+                              'examples': [{'title': 'Campaign detail',
+                                            'description': 'Fetch one campaign by ID.',
+                                            'path': '/campaigns/1',
+                                            'query': {}},
+                                           {'title': 'Campaign detail without detailed stats',
+                                            'description': 'Fetch one campaign with summary stats only.',
+                                            'path': '/campaigns/1',
+                                            'query': {'include_details': 'false'}}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'Campaign detail fetched successfully',
+                                                   'meta': {'generated_at': '2026-07-04T10:00:00+00:00',
+                                                            'campaign_id': 1,
+                                                            'include_details': True},
+                                                   'data': {'schema_version': 'logiklu_campaign.v1',
+                                                            'campaign': {'campaign_id': 1,
+                                                                         'campaign_provider_id': '1',
+                                                                         'campaign_name': 'Welcome Campaign',
+                                                                         'campaign_subject': 'Welcome to LogiKlu',
+                                                                         'campaign_sender': {'name': 'Alex Hans',
+                                                                                             'email': 'logikluenterprise@gmail.com'},
+                                                                         'created_date': '2026-07-01 10:30:00',
+                                                                         'sent_date': '2026-07-01 12:00:00',
+                                                                         'stats': {'total_recipients': 27,
+                                                                                   'delivered': 25,
+                                                                                   'not_opened': 4,
+                                                                                   'opened': 9,
+                                                                                   'clicked': 12,
+                                                                                   'hard_bounced': 1,
+                                                                                   'soft_bounced': 1,
+                                                                                   'total_bounced': 2,
+                                                                                   'unsubscribed': 0,
+                                                                                   'open_rate': 36.0,
+                                                                                   'click_rate': 48.0,
+                                                                                   'bounce_rate': 7.41,
+                                                                                   'unsubscribed_rate': 0.0},
+                                                                         'detailed_stat': {'delivered': [{'contact_id': 329,
+                                                                                                          'name': 'Suzanne '
+                                                                                                                  'Burris',
+                                                                                                          'email': 'suzanne.burris@tokoelectron.com'}],
+                                                                                           'not_opened': [],
+                                                                                           'opened': [],
+                                                                                           'clicked': [],
+                                                                                           'hard_bounced': [],
+                                                                                           'soft_bounced': [],
+                                                                                           'total_bounced': [],
+                                                                                           'unsubscribed': []}}}}}]},
               {'id': 'roles',
                'title': 'Roles',
                'description': 'Use Roles APIs to read active assignable roles available for users. Roles are returned '
@@ -3181,7 +3782,7 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
  'errors': [{'code': 'AUTH_CREDENTIALS_MISSING',
              'http_status': 401,
              'meaning': 'No bearer token was sent.',
-             'fix': 'Generate a token using /oauth/token and send Authorization: Bearer <access_token>.'},
+             'fix': 'Generate an access token from /oauth/token and send Authorization: Bearer <access_token>.'},
             {'code': 'AUTHORIZATION_HEADER_INVALID',
              'http_status': 401,
              'meaning': 'Authorization header was sent in an invalid format.',
@@ -3218,10 +3819,38 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
              'http_status': 404,
              'meaning': 'No LogiKlu account intelligence record was found for the requested account_id.',
              'fix': 'Use a valid account_id available in the current LogiKlu Focus intelligence dataset.'},
+            {'code': 'AUTH_API_CLIENT_INACTIVE',
+             'http_status': 403,
+             'meaning': 'The API client is inactive.',
+             'fix': 'Activate the API client or use an active Bearer token.'},
+            {'code': 'AUTH_SUBSCRIPTION_INACTIVE',
+             'http_status': 403,
+             'meaning': 'The client subscription is inactive.',
+             'fix': 'Check the client subscription status.'},
+            {'code': 'AUTH_IP_NOT_ALLOWED',
+             'http_status': 403,
+             'meaning': 'The request IP address is not allowed for this Bearer token.',
+             'fix': 'Allow the requesting IP or use an approved network.'},
             {'code': 'VALIDATION_ERROR',
              'http_status': 422,
              'meaning': 'One or more request parameters are invalid.',
              'fix': 'Check parameter names, types, and allowed values.'},
+            {'code': 'RESOURCE_NOT_FOUND',
+             'http_status': 404,
+             'meaning': 'The requested endpoint or resource was not found.',
+             'fix': 'Check the endpoint path or resource ID.'},
+            {'code': 'METHOD_NOT_ALLOWED',
+             'http_status': 405,
+             'meaning': 'The endpoint exists, but the HTTP method is not allowed.',
+             'fix': 'Use the documented HTTP method for the endpoint.'},
+            {'code': 'ACCOUNT_NOT_FOUND',
+             'http_status': 404,
+             'meaning': 'No account found for the given account ID.',
+             'fix': 'Use a valid account ID.'},
+            {'code': 'CONTACT_NOT_FOUND',
+             'http_status': 404,
+             'meaning': 'No contact found for the given contact ID.',
+             'fix': 'Use a valid contact ID.'},
             {'code': 'INTERNAL_SERVER_ERROR',
              'http_status': 500,
              'meaning': 'Unexpected server-side error.',
@@ -3257,7 +3886,32 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
             {'code': 'USER_DETAIL_FETCH_FAILED',
              'http_status': 500,
              'meaning': 'The user detail endpoint failed because of a server-side error.',
-             'fix': 'Retry later or contact LogiKlu support with request details.'}],
+             'fix': 'Retry later or contact LogiKlu support with request details.'},
+            {'code': 'LOGIKLU_USER_NOTES_INVALID_SCOPE',
+             'http_status': 400,
+             'meaning': 'The requested note scope is invalid.',
+             'fix': 'Use /notes/account, /notes/contact, or /notes/deal. Scope values are lead, contact, and deal.'},
+            {'code': 'LOGIKLU_USER_NOTE_NOT_FOUND',
+             'http_status': 404,
+             'meaning': 'No note was found for the requested note_id.',
+             'fix': 'Use a valid note_id from /note.'},
+            {'code': 'LOGIKLU_USER_NOTES_FETCH_FAILED',
+             'http_status': 500,
+             'meaning': 'The API failed to fetch notes.',
+             'fix': 'Check request parameters and contact LogiKlu support if the issue continues.'},
+            {'code': 'LOGIKLU_USER_ATTACHMENTS_INVALID_SCOPE',
+             'http_status': 400,
+             'meaning': 'The requested attachment scope is invalid.',
+             'fix': 'Use /attachments/account, /attachments/contact, or /attachments/deal. Scope values are lead, '
+                    'contact, and deal.'},
+            {'code': 'LOGIKLU_USER_ATTACHMENT_NOT_FOUND',
+             'http_status': 404,
+             'meaning': 'No attachment was found for the requested attachment_id.',
+             'fix': 'Use a valid attachment_id from /attachment.'},
+            {'code': 'LOGIKLU_USER_ATTACHMENTS_FETCH_FAILED',
+             'http_status': 500,
+             'meaning': 'The API failed to fetch attachments.',
+             'fix': 'Check request parameters and contact LogiKlu support if the issue continues.'}],
  'logging': {'title': 'API Request Logging',
              'description': 'LogiKlu stores API request logs internally for audit, troubleshooting, and support.',
              'logged_fields': ['oauth_client_id',
@@ -3271,9 +3925,13 @@ API_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                'ip_address',
                                'user_agent',
                                'request_params',
+                               'request_body for POST, PUT, PATCH, DELETE',
                                'http_status_code',
                                'response_status',
                                'error_code',
                                'error_message',
                                'execution_time_ms',
-                               'created_at']}}
+                               'created_at']},
+ 'auth_badge': 'Bearer JWT',
+ 'show_legacy_api_key': False,
+ 'quick_start_auth_type': 'bearer'}
