@@ -168,14 +168,12 @@ def _normalize_priority_accounts(payload: Dict[str, Any]) -> List[Dict[str, Any]
             continue
 
         final_explanation = _safe_json_value(item.get("final_explanation"), {})
-        source = _safe_json_value(item.get("source"), {})
 
         output.append(
             {
                 "account_id": account_id,
                 "priority_rank": _safe_int(item.get("priority_rank") or item.get("rank"), index),
                 "final_explanation": final_explanation,
-                "source": source,
             }
         )
 
@@ -231,136 +229,72 @@ def _normalize_contacts(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return output
 
 
-def _fetch_company_log_snapshot(
+def _fetch_company_report_snapshot(
     cursor,
     source_report_id: int,
-    report_uid: str,
-    report_batch_uid: str,
     account_id: int,
 ) -> Optional[Dict[str, Any]]:
-    """Fetch strongest matching source company log row for account from the old report log."""
+    """Fetch company source row from lk_focus_report_company.
+
+    Important business rule:
+    source_json in the new AI report table must be copied from
+    lk_focus_report_company.source_activity_json exactly.
+    AI does not post source data.
+    """
     sql = """
         SELECT
-            report_company_log_id,
+            report_company_id,
             report_id,
-            report_uid,
-            report_batch_uid,
             lead_id,
+            source_activity_json,
             visitors_name,
             country,
             state,
             city,
-            ip,
             website,
-            track_ids,
-            track_lead_ids,
             action_taken,
-            first_visit_timestamp,
-            first_visit_utc_datetime,
-            last_visit_timestamp,
-            last_visit_utc_datetime,
-            activity_score,
-            depth_score,
-            sustenance_score,
-            context_score,
-            conversion_score,
-            interest_score,
-            interest_category,
+            final_explanation,
+            insight_summary,
+            account_summary_short,
             priority_score,
             priority_label,
             engagement_level,
             final_score,
-            is_shortlisted,
-            shortlisted_rank,
-            shortlist_reason,
-            exclusion_reason,
-            scoring_json,
-            explanations_json,
-            final_explanation,
-            insight_summary,
-            account_summary_short,
-            internal_explanation_json,
-            settings_snapshot_json,
-            score_breakdown_json,
-            score_explanation,
-            top_signal_json,
+            report_rank,
             created_date
-        FROM lk_focus_report_company_log
-        WHERE lead_id = %s
-          AND (
-                report_id = %s
-             OR report_uid = %s
-             OR report_batch_uid = %s
-          )
+        FROM lk_focus_report_company
+        WHERE report_id = %s
+          AND lead_id = %s
         ORDER BY
-            CASE WHEN report_id = %s THEN 0 ELSE 1 END ASC,
-            CASE WHEN report_uid = %s THEN 0 ELSE 1 END ASC,
-            CASE WHEN report_batch_uid = %s THEN 0 ELSE 1 END ASC,
-            CASE WHEN is_shortlisted = 'Y' THEN 0 ELSE 1 END ASC,
-            shortlisted_rank ASC,
+            CASE WHEN report_rank IS NULL THEN 1 ELSE 0 END ASC,
+            report_rank ASC,
             final_score DESC,
-            report_company_log_id DESC
+            report_company_id DESC
         LIMIT 1
     """
 
     return _fetch_one(
         cursor,
         sql,
-        (
-            account_id,
-            source_report_id,
-            report_uid,
-            report_batch_uid,
-            source_report_id,
-            report_uid,
-            report_batch_uid,
-        ),
+        (source_report_id, account_id),
     )
 
 
-def _build_source_json(company_log: Optional[Dict[str, Any]], posted_source: Dict[str, Any]) -> Dict[str, Any]:
-    source_json: Dict[str, Any] = {}
+def _build_source_json(company_report: Optional[Dict[str, Any]]) -> Any:
+    """Return only lk_focus_report_company.source_activity_json.
 
-    if company_log:
-        source_json = {
-            "source_table": "lk_focus_report_company_log",
-            "source_report_id": company_log.get("report_id"),
-            "source_report_uid": company_log.get("report_uid"),
-            "source_report_batch_uid": company_log.get("report_batch_uid"),
-            "report_company_log_id": company_log.get("report_company_log_id"),
-            "track_ids": _safe_json_value(company_log.get("track_ids"), []),
-            "track_lead_ids": _safe_json_value(company_log.get("track_lead_ids"), []),
-            "action_taken": _safe_json_value(company_log.get("action_taken"), {}),
-            "first_visit_timestamp": company_log.get("first_visit_timestamp"),
-            "first_visit_utc_datetime": company_log.get("first_visit_utc_datetime"),
-            "last_visit_timestamp": company_log.get("last_visit_timestamp"),
-            "last_visit_utc_datetime": company_log.get("last_visit_utc_datetime"),
-            "activity_score": company_log.get("activity_score"),
-            "depth_score": company_log.get("depth_score"),
-            "sustenance_score": company_log.get("sustenance_score"),
-            "context_score": company_log.get("context_score"),
-            "conversion_score": company_log.get("conversion_score"),
-            "interest_score": company_log.get("interest_score"),
-            "interest_category": company_log.get("interest_category"),
-            "priority_score": company_log.get("priority_score"),
-            "priority_label": company_log.get("priority_label"),
-            "engagement_level": company_log.get("engagement_level"),
-            "final_score": company_log.get("final_score"),
-            "is_shortlisted": company_log.get("is_shortlisted"),
-            "shortlisted_rank": company_log.get("shortlisted_rank"),
-            "shortlist_reason": company_log.get("shortlist_reason"),
-            "top_signal_json": _safe_json_value(company_log.get("top_signal_json"), {}),
-            "score_breakdown_json": _safe_json_value(company_log.get("score_breakdown_json"), {}),
-        }
+    Do not wrap it.
+    Do not merge with AI-posted source.
+    Do not build a custom source structure.
+    """
+    if not company_report:
+        return {}
 
-    if posted_source:
-        source_json["posted_source"] = posted_source
-
-    return source_json
+    return _parse_json_column(company_report.get("source_activity_json"), {})
 
 
-def _build_account_snapshot(company_log: Optional[Dict[str, Any]], account_id: int) -> Dict[str, Any]:
-    if not company_log:
+def _build_account_snapshot(company_report: Optional[Dict[str, Any]], account_id: int) -> Dict[str, Any]:
+    if not company_report:
         return {
             "account_id": account_id,
             "account_name": None,
@@ -374,21 +308,19 @@ def _build_account_snapshot(company_log: Optional[Dict[str, Any]], account_id: i
 
     return {
         "account_id": account_id,
-        "account_name": company_log.get("visitors_name"),
-        "website": company_log.get("website"),
-        "ip": company_log.get("ip"),
+        "account_name": company_report.get("visitors_name"),
+        "website": company_report.get("website"),
         "location": {
-            "city": company_log.get("city"),
-            "state": company_log.get("state"),
-            "country": company_log.get("country"),
+            "city": company_report.get("city"),
+            "state": company_report.get("state"),
+            "country": company_report.get("country"),
         },
         "old_report": {
-            "report_company_log_id": company_log.get("report_company_log_id"),
-            "priority_score": company_log.get("priority_score"),
-            "priority_label": company_log.get("priority_label"),
-            "engagement_level": company_log.get("engagement_level"),
-            "final_score": company_log.get("final_score"),
-            "interest_category": company_log.get("interest_category"),
+            "report_company_id": company_report.get("report_company_id"),
+            "priority_score": company_report.get("priority_score"),
+            "priority_label": company_report.get("priority_label"),
+            "engagement_level": company_report.get("engagement_level"),
+            "final_score": company_report.get("final_score"),
         },
     }
 
@@ -507,7 +439,7 @@ def _insert_priority_account(
     report_uid: str,
     report_batch_uid: str,
     item: Dict[str, Any],
-    company_log: Optional[Dict[str, Any]],
+    company_report: Optional[Dict[str, Any]],
 ) -> None:
     account_id = _safe_int(item.get("account_id"), 0)
     final_explanation = _safe_json_value(item.get("final_explanation"), {})
@@ -520,26 +452,20 @@ def _insert_priority_account(
         why_company_matters = final_explanation.get("why_company_matters") or []
         account_insight_summary = _safe_str(final_explanation.get("account_insight_summary"))
 
-    if not account_insight_summary and company_log:
-        account_insight_summary = _safe_str(company_log.get("insight_summary"))
+    if not account_insight_summary and company_report:
+        account_insight_summary = _safe_str(company_report.get("insight_summary"))
 
-    posted_source = _safe_json_value(item.get("source"), {})
-    source_json = _build_source_json(company_log, posted_source)
-    account_snapshot = _build_account_snapshot(company_log, account_id)
+    # Source must come from lk_focus_report_company.source_activity_json only.
+    # AI-posted payload must not override or add source content.
+    source_json = _build_source_json(company_report)
+    account_snapshot = _build_account_snapshot(company_report, account_id)
 
     source_company_log_id = None
-    if posted_source and posted_source.get("source_company_log_id"):
-        source_company_log_id = _safe_int(posted_source.get("source_company_log_id"), 0)
-    elif company_log:
-        source_company_log_id = _safe_int(company_log.get("report_company_log_id"), 0)
+    if company_report:
+        source_company_log_id = _safe_int(company_report.get("report_company_id"), 0)
 
-    source_type = _safe_str(posted_source.get("source_type")) if posted_source else ""
-    if not source_type:
-        source_type = "focus_report_company_log" if company_log else "ai_posted"
-
-    source_summary = _safe_str(posted_source.get("source_summary")) if posted_source else ""
-    if not source_summary and company_log:
-        source_summary = _safe_str(company_log.get("shortlist_reason") or company_log.get("account_summary_short"))
+    source_type = "lk_focus_report_company.source_activity_json" if company_report else "not_found"
+    source_summary = "Source copied exactly from lk_focus_report_company.source_activity_json" if company_report else "Source row not found in lk_focus_report_company"
 
     sql = """
         INSERT INTO lk_focus_agent_report_priority_account
@@ -589,11 +515,11 @@ def _insert_priority_account(
             source_summary,
             _json_dumps(source_json),
             item.get("priority_rank"),
-            company_log.get("visitors_name") if company_log else None,
-            company_log.get("website") if company_log else None,
-            company_log.get("country") if company_log else None,
-            company_log.get("state") if company_log else None,
-            company_log.get("city") if company_log else None,
+            company_report.get("visitors_name") if company_report else None,
+            company_report.get("website") if company_report else None,
+            company_report.get("country") if company_report else None,
+            company_report.get("state") if company_report else None,
+            company_report.get("city") if company_report else None,
             _json_dumps(final_explanation),
             _json_dumps(engagement_pattern),
             _json_dumps(why_company_matters),
@@ -721,11 +647,9 @@ def save_current_focus_report(client_database: str, payload: Dict[str, Any], aut
 
         for item in priority_accounts:
             account_id = _safe_int(item.get("account_id"), 0)
-            company_log = _fetch_company_log_snapshot(
+            company_report = _fetch_company_report_snapshot(
                 cursor=cursor,
                 source_report_id=source_report_id,
-                report_uid=report_uid,
-                report_batch_uid=report_batch_uid,
                 account_id=account_id,
             )
             _insert_priority_account(
@@ -735,7 +659,7 @@ def save_current_focus_report(client_database: str, payload: Dict[str, Any], aut
                 report_uid=report_uid,
                 report_batch_uid=report_batch_uid,
                 item=item,
-                company_log=company_log,
+                company_report=company_report,
             )
 
         for item in contacts:
@@ -816,11 +740,13 @@ def _normalize_priority_account_row(row: Dict[str, Any]) -> Dict[str, Any]:
             },
             "snapshot": _parse_json_column(row.get("account_snapshot_json"), {}),
         },
-        "source": {
-            "source_company_log_id": row.get("source_company_log_id"),
+        # source must be exactly the saved source_json, which is copied
+        # from lk_focus_report_company.source_activity_json.
+        "source": _parse_json_column(row.get("source_json"), {}),
+        "source_reference": {
+            "source_company_id": row.get("source_company_log_id"),
             "source_type": row.get("source_type"),
             "source_summary": row.get("source_summary"),
-            "source_json": _parse_json_column(row.get("source_json"), {}),
         },
         "final_explanation": _parse_json_column(row.get("final_explanation_json"), {}),
         "engagement_pattern": _parse_json_column(row.get("engagement_pattern_json"), []),
