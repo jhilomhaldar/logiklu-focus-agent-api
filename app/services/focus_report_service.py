@@ -234,11 +234,11 @@ def _fetch_company_report_snapshot(
     source_report_id: int,
     account_id: int,
 ) -> Optional[Dict[str, Any]]:
-    """Fetch company source row from lk_focus_report_company.
+    """Fetch old company report row from lk_focus_report_company.
 
-    Important business rule:
-    source_json in the new AI report table must be copied from
-    lk_focus_report_company.source_activity_json exactly.
+    This row is used for account snapshot/details only.
+    Source activity is generated separately from
+    lk_focus_report_company_journey.journey_timeline_json.
     AI does not post source data.
     """
     sql = """
@@ -280,17 +280,201 @@ def _fetch_company_report_snapshot(
     )
 
 
-def _build_source_json(company_report: Optional[Dict[str, Any]]) -> Any:
-    """Return only lk_focus_report_company.source_activity_json.
+def _fetch_company_journey_snapshot(
+    cursor,
+    source_report_id: int,
+    account_id: int,
+) -> Optional[Dict[str, Any]]:
+    """Fetch journey row used to generate source activity.
 
-    Do not wrap it.
-    Do not merge with AI-posted source.
-    Do not build a custom source structure.
+    Business rule:
+    AI will not post source activity. The API prepares source activity from
+    lk_focus_report_company_journey.journey_timeline_json for the same
+    report/account and stores it in lk_focus_agent_report_priority_account.source_json.
     """
-    if not company_report:
-        return {}
+    sql = """
+        SELECT
+            journey_id,
+            report_id,
+            report_uid,
+            report_batch_uid,
+            report_company_log_id,
+            lead_id,
+            visitors_name,
+            companyfetch_type,
+            country,
+            state,
+            city,
+            website,
+            journey_timeline_json,
+            first_visit_date,
+            last_visit_date,
+            total_visits,
+            total_time_spent,
+            shortlisted_rank,
+            final_score,
+            created_date
+        FROM lk_focus_report_company_journey
+        WHERE report_id = %s
+          AND lead_id = %s
+        ORDER BY
+            CASE WHEN is_shortlisted = 'Y' THEN 0 ELSE 1 END ASC,
+            CASE WHEN shortlisted_rank IS NULL THEN 1 ELSE 0 END ASC,
+            shortlisted_rank ASC,
+            final_score DESC,
+            journey_id DESC
+        LIMIT 1
+    """
 
-    return _parse_json_column(company_report.get("source_activity_json"), {})
+    return _fetch_one(
+        cursor,
+        sql,
+        (source_report_id, account_id),
+    )
+
+
+def _date_only(value: Any) -> str:
+    if value is None:
+        return ""
+
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d")
+
+    if isinstance(value, date):
+        return value.strftime("%Y-%m-%d")
+
+    value = _safe_str(value)
+    if len(value) >= 10:
+        return value[:10]
+
+    return value
+
+
+def _source_label_from_source(source_data: Dict[str, Any]) -> str:
+    source_type = _safe_str(source_data.get("source_type"))
+    source_label = _safe_str(source_data.get("source_label"))
+
+    if source_type:
+        return source_type
+
+    if source_label:
+        lowered = source_label.lower()
+        if lowered == "direct visit":
+            return "Direct"
+        return source_label
+
+    return "Direct"
+
+
+def _source_name_from_source(source_data: Dict[str, Any]) -> str:
+    source_type = _safe_str(source_data.get("source_type")).lower()
+    source_label = _safe_str(source_data.get("source_label")).lower()
+
+    campaign_name = _safe_str(source_data.get("campaign_name"))
+    campaign_subject = _safe_str(source_data.get("campaign_subject"))
+    link_name = _safe_str(source_data.get("link_name"))
+    provider = _safe_str(source_data.get("provider"))
+    entry_page_title = _safe_str(source_data.get("entry_page_title"))
+
+    if campaign_name:
+        return campaign_name
+
+    if campaign_subject:
+        return campaign_subject
+
+    if link_name:
+        return link_name
+
+    if provider:
+        return provider
+
+    if source_type == "direct" or source_label == "direct visit":
+        return "Website Visit"
+
+    if entry_page_title:
+        return "Website Visit"
+
+    return "Website Visit"
+
+
+def _build_source_activity_from_journey(journey_report: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Build the source activity array from journey timeline sessions.
+
+    Output format:
+    [
+        {
+            "source": "Direct",
+            "visited_date": "2026-06-30",
+            "source_details": {
+                "source_name": "Website Visit"
+            }
+        }
+    ]
+    """
+    if not journey_report:
+        return []
+
+    journey_timeline = _parse_json_column(journey_report.get("journey_timeline_json"), {})
+    days = []
+
+    if isinstance(journey_timeline, dict):
+        days = journey_timeline.get("days") or []
+    elif isinstance(journey_timeline, list):
+        days = journey_timeline
+
+    if not isinstance(days, list):
+        return []
+
+    output: List[Dict[str, Any]] = []
+    seen = set()
+
+    for day in days:
+        if not isinstance(day, dict):
+            continue
+
+        day_date = _date_only(day.get("date"))
+        sessions = day.get("sessions") or []
+
+        if not isinstance(sessions, list):
+            continue
+
+        for session in sessions:
+            if not isinstance(session, dict):
+                continue
+
+            source_data = session.get("source") or {}
+            if not isinstance(source_data, dict):
+                source_data = {}
+
+            source = _source_label_from_source(source_data)
+            visited_date = _date_only(
+                source_data.get("visited_at")
+                or session.get("started_at")
+                or session.get("ended_at")
+                or day_date
+            )
+
+            if not visited_date:
+                visited_date = day_date
+
+            source_name = _source_name_from_source(source_data)
+            unique_key = (source, visited_date, source_name)
+
+            if unique_key in seen:
+                continue
+
+            seen.add(unique_key)
+            output.append(
+                {
+                    "source": source,
+                    "visited_date": visited_date,
+                    "source_details": {
+                        "source_name": source_name,
+                    },
+                }
+            )
+
+    return output
 
 
 def _build_account_snapshot(company_report: Optional[Dict[str, Any]], account_id: int) -> Dict[str, Any]:
@@ -440,6 +624,7 @@ def _insert_priority_account(
     report_batch_uid: str,
     item: Dict[str, Any],
     company_report: Optional[Dict[str, Any]],
+    journey_report: Optional[Dict[str, Any]],
 ) -> None:
     account_id = _safe_int(item.get("account_id"), 0)
     final_explanation = _safe_json_value(item.get("final_explanation"), {})
@@ -455,17 +640,26 @@ def _insert_priority_account(
     if not account_insight_summary and company_report:
         account_insight_summary = _safe_str(company_report.get("insight_summary"))
 
-    # Source must come from lk_focus_report_company.source_activity_json only.
+    # Source activity is generated from the journey timeline.
     # AI-posted payload must not override or add source content.
-    source_json = _build_source_json(company_report)
+    source_json = _build_source_activity_from_journey(journey_report)
     account_snapshot = _build_account_snapshot(company_report, account_id)
 
     source_company_log_id = None
-    if company_report:
+    if journey_report:
+        source_company_log_id = _safe_int(journey_report.get("report_company_log_id"), 0)
+    elif company_report:
         source_company_log_id = _safe_int(company_report.get("report_company_id"), 0)
 
-    source_type = "lk_focus_report_company.source_activity_json" if company_report else "not_found"
-    source_summary = "Source copied exactly from lk_focus_report_company.source_activity_json" if company_report else "Source row not found in lk_focus_report_company"
+    if journey_report:
+        source_type = "lk_focus_report_company_journey.journey_timeline_json"
+        source_summary = "Source activity generated from journey timeline session sources"
+    elif company_report:
+        source_type = "lk_focus_report_company_journey.not_found"
+        source_summary = "Company row found but journey row not found; source activity is empty"
+    else:
+        source_type = "not_found"
+        source_summary = "Company and journey source rows not found; source activity is empty"
 
     sql = """
         INSERT INTO lk_focus_agent_report_priority_account
@@ -652,6 +846,11 @@ def save_current_focus_report(client_database: str, payload: Dict[str, Any], aut
                 source_report_id=source_report_id,
                 account_id=account_id,
             )
+            journey_report = _fetch_company_journey_snapshot(
+                cursor=cursor,
+                source_report_id=source_report_id,
+                account_id=account_id,
+            )
             _insert_priority_account(
                 cursor=cursor,
                 agent_report_id=agent_report_id,
@@ -660,6 +859,7 @@ def save_current_focus_report(client_database: str, payload: Dict[str, Any], aut
                 report_batch_uid=report_batch_uid,
                 item=item,
                 company_report=company_report,
+                journey_report=journey_report,
             )
 
         for item in contacts:
@@ -740,9 +940,9 @@ def _normalize_priority_account_row(row: Dict[str, Any]) -> Dict[str, Any]:
             },
             "snapshot": _parse_json_column(row.get("account_snapshot_json"), {}),
         },
-        # source must be exactly the saved source_json, which is copied
-        # from lk_focus_report_company.source_activity_json.
-        "source": _parse_json_column(row.get("source_json"), {}),
+        # source is the source activity array generated from
+        # lk_focus_report_company_journey.journey_timeline_json.
+        "source": _parse_json_column(row.get("source_json"), []),
         "source_reference": {
             "source_company_id": row.get("source_company_log_id"),
             "source_type": row.get("source_type"),
