@@ -247,6 +247,11 @@ def _fetch_company_report_snapshot(
             report_id,
             lead_id,
             source_activity_json,
+            track_lead_ids,
+            first_visit_timestamp,
+            first_visit_utc_datetime,
+            last_visit_timestamp,
+            last_visit_utc_datetime,
             visitors_name,
             country,
             state,
@@ -301,6 +306,11 @@ def _fetch_company_log_snapshot(
             state,
             city,
             website,
+            track_lead_ids,
+            first_visit_timestamp,
+            first_visit_utc_datetime,
+            last_visit_timestamp,
+            last_visit_utc_datetime,
             priority_score,
             priority_label,
             engagement_level,
@@ -432,6 +442,246 @@ def _date_only(value: Any) -> str:
 
     return value
 
+
+
+def _parse_json_dict(value: Any) -> Dict[str, Any]:
+    parsed = _safe_json_value(value, {})
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _parse_json_list(value: Any) -> List[Any]:
+    parsed = _safe_json_value(value, [])
+    return parsed if isinstance(parsed, list) else []
+
+
+def _extract_track_lead_ids(*values: Any) -> List[int]:
+    """Extract unique track_lead_id values from JSON array, comma string, list, or scalar."""
+    ids: List[int] = []
+
+    def add_one(raw: Any) -> None:
+        number = _safe_int(raw, 0)
+        if number > 0 and number not in ids:
+            ids.append(number)
+
+    for value in values:
+        if value is None or value == "":
+            continue
+
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", errors="ignore")
+
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("[") or stripped.startswith("{"):
+                parsed = _safe_json_value(stripped, None)
+                if isinstance(parsed, list):
+                    for item in parsed:
+                        add_one(item)
+                    continue
+                if isinstance(parsed, dict):
+                    for item in parsed.values():
+                        add_one(item)
+                    continue
+            for part in stripped.split(","):
+                add_one(part.strip())
+            continue
+
+        if isinstance(value, (list, tuple, set)):
+            for item in value:
+                add_one(item)
+            continue
+
+        add_one(value)
+
+    return ids
+
+
+def _first_visit_value(*rows: Optional[Dict[str, Any]]) -> str:
+    """Return best first visit value for Direct source.
+
+    The old PHP row had first_visit_date. In the saved report tables we usually have
+    first_visit_utc_datetime / first_visit_timestamp, so use those as fallbacks.
+    """
+    for row in rows:
+        if not row:
+            continue
+        for key in ("first_visit_date", "first_visit_utc_datetime", "created_date"):
+            value = _safe_str(row.get(key))
+            if value:
+                return _date_only(value)
+        timestamp = _safe_int(row.get("first_visit_timestamp"), 0)
+        if timestamp > 0:
+            try:
+                return datetime.utcfromtimestamp(timestamp).strftime("%Y-%m-%d")
+            except Exception:
+                pass
+    return ""
+
+
+def _parse_datetime_for_compare(value: Any) -> Optional[datetime]:
+    value = _safe_str(value)
+    if not value:
+        return None
+
+    cleaned = value.replace("T", " ").replace("Z", "").strip()
+
+    for candidate in (cleaned[:19], cleaned[:16], cleaned[:10]):
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(candidate, fmt)
+            except Exception:
+                continue
+
+    try:
+        return datetime.fromisoformat(cleaned)
+    except Exception:
+        return None
+
+
+def _direct_source_activity(first_visit_date: str) -> List[Dict[str, Any]]:
+    first_visit_date = _date_only(first_visit_date)
+    if not first_visit_date:
+        return []
+    return [
+        {
+            "source": "Direct",
+            "source_details": {
+                "source_name": "Website Visit",
+            },
+            "visited_date": first_visit_date,
+        }
+    ]
+
+
+def _fetch_campaign_link_visit_rows(cursor, track_lead_ids: List[int]) -> List[Dict[str, Any]]:
+    if not track_lead_ids:
+        return []
+
+    placeholders = ",".join(["%s"] * len(track_lead_ids))
+    sql = f"""
+        SELECT
+            id,
+            track_date,
+            track_date_time,
+            tracktime,
+            support_id,
+            track_id,
+            track_lead_id,
+            link_id,
+            link_details,
+            campaign_id,
+            campaign_details,
+            provider,
+            page_url,
+            page_title
+        FROM lk_link_visits
+        WHERE track_lead_id IN ({placeholders})
+          AND campaign_id IS NOT NULL
+          AND campaign_id > 0
+        ORDER BY track_date_time ASC, id ASC
+    """
+
+    try:
+        cursor.execute(sql, tuple(track_lead_ids))
+        rows = cursor.fetchall()
+        return list(rows) if rows else []
+    except Exception:
+        return []
+
+
+def _build_source_activity_from_php_logic(
+    cursor,
+    company_log_report: Optional[Dict[str, Any]],
+    company_report: Optional[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], str]:
+    """Python version of lkfocus::getfocuscompanysourceactivities().
+
+    It uses lk_focus_report_company_log.track_lead_ids, checks lk_link_visits for
+    campaign visits, adds Direct only when there is no campaign or when the first
+    direct visit happened before the first campaign visit, and returns the same
+    structure saved by the old PHP report generator.
+    """
+    track_lead_ids = _extract_track_lead_ids(
+        company_log_report.get("track_lead_ids") if company_log_report else None,
+        company_report.get("track_lead_ids") if company_report else None,
+    )
+
+    first_visit_date = _first_visit_value(company_log_report, company_report)
+
+    if not track_lead_ids:
+        return _direct_source_activity(first_visit_date), "direct_fallback_no_track_lead_ids"
+
+    link_rows = _fetch_campaign_link_visit_rows(cursor, track_lead_ids)
+
+    campaign_sources: List[Dict[str, Any]] = []
+    first_campaign_visit_date = ""
+    seen_campaign_links = set()
+
+    for link_row in link_rows:
+        link_details = _parse_json_dict(link_row.get("link_details"))
+        campaign_details = _parse_json_dict(link_row.get("campaign_details"))
+
+        visit_date = _safe_str(link_row.get("track_date_time")) or _safe_str(link_row.get("track_date"))
+        if not first_campaign_visit_date and visit_date:
+            first_campaign_visit_date = visit_date
+
+        campaign_id = _safe_int(link_row.get("campaign_id"), 0)
+        link_id = _safe_int(link_row.get("link_id"), 0)
+
+        campaign_name = _safe_str(campaign_details.get("campaign_name"))
+        campaign_subject = _safe_str(campaign_details.get("campaign_subject"))
+        link_name = _safe_str(link_details.get("link_name"))
+        link_url = _safe_str(link_details.get("link_url"))
+
+        dedupe_key = f"{campaign_id}|{link_id}|{link_name.lower()}"
+        if dedupe_key in seen_campaign_links:
+            continue
+        seen_campaign_links.add(dedupe_key)
+
+        campaign_sources.append(
+            {
+                "source": "Email Campaign",
+                "source_details": {
+                    "campaign_id": campaign_id,
+                    "campaign_name": campaign_name,
+                    "campaign_subject": campaign_subject,
+                    "link_id": link_id,
+                    "link_name": link_name,
+                    "link_url": link_url,
+                    "provider": _safe_str(link_row.get("provider")),
+                    "page_url": _safe_str(link_row.get("page_url")),
+                    "page_title": _safe_str(link_row.get("page_title")),
+                },
+                "visited_date": visit_date,
+            }
+        )
+
+    result: List[Dict[str, Any]] = []
+
+    should_add_direct = False
+    if first_visit_date:
+        if not campaign_sources:
+            should_add_direct = True
+        elif first_campaign_visit_date:
+            direct_dt = _parse_datetime_for_compare(first_visit_date)
+            campaign_dt = _parse_datetime_for_compare(first_campaign_visit_date)
+            if direct_dt and campaign_dt and direct_dt < campaign_dt:
+                should_add_direct = True
+
+    if should_add_direct:
+        result.extend(_direct_source_activity(first_visit_date))
+
+    result.extend(campaign_sources)
+    return result, "lk_link_visits"
+
+
+def _fallback_source_activity_from_company_report(company_report: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not company_report:
+        return []
+    source_activity = _parse_json_list(company_report.get("source_activity_json"))
+    return source_activity if source_activity else []
 
 def _source_label_from_source(source_data: Dict[str, Any]) -> str:
     source_type = _safe_str(source_data.get("source_type"))
@@ -727,31 +977,49 @@ def _insert_priority_account(
     if not company_report and company_log_report:
         company_report = company_log_report
 
-    # Source activity is generated from the journey timeline.
-    # AI-posted payload must not override or add source content.
-    source_json = _build_source_activity_from_journey(journey_report)
+    # Source activity is generated using the same logic as the PHP
+    # lkfocus::getfocuscompanysourceactivities() method. AI-posted payload
+    # must not override or add source content.
+    source_json, source_builder = _build_source_activity_from_php_logic(
+        cursor,
+        company_log_report,
+        company_report,
+    )
+
+    # Final fallback: if the old shortlisted company row already has
+    # source_activity_json, keep source_json populated instead of saving [].
+    if not source_json:
+        source_json = _fallback_source_activity_from_company_report(company_report)
+        if source_json:
+            source_builder = "lk_focus_report_company.source_activity_json"
+
     account_snapshot = _build_account_snapshot(company_report, account_id)
 
     source_company_log_id = None
-    if journey_report:
-        source_company_log_id = _safe_int(journey_report.get("report_company_log_id"), 0)
-    elif company_log_report:
+    if company_log_report:
         source_company_log_id = _safe_int(company_log_report.get("report_company_log_id"), 0)
+    elif journey_report:
+        source_company_log_id = _safe_int(journey_report.get("report_company_log_id"), 0)
     elif company_report:
         source_company_log_id = _safe_int(company_report.get("report_company_id"), 0)
 
-    if journey_report:
-        source_type = "lk_focus_report_company_journey.journey_timeline_json"
-        source_summary = str(len(source_json)) + " source activity item(s) generated from journey timeline session sources"
+    if source_json:
+        source_type = source_builder
+        if source_builder == "lk_link_visits":
+            source_summary = str(len(source_json)) + " source activity item(s) generated from lk_link_visits using lk_focus_report_company_log.track_lead_ids"
+        elif source_builder == "direct_fallback_no_track_lead_ids":
+            source_summary = str(len(source_json)) + " direct source activity item generated from first visit because track_lead_ids were empty"
+        else:
+            source_summary = str(len(source_json)) + " source activity item(s) copied from existing focus report company source_activity_json"
     elif company_log_report:
-        source_type = "lk_focus_report_company_journey.not_found"
-        source_summary = "Company log row found but journey row not found; source activity is empty"
+        source_type = "lk_link_visits.not_found"
+        source_summary = "Company log row found, but no campaign/direct source activity could be generated"
     elif company_report:
-        source_type = "lk_focus_report_company_journey.not_found"
-        source_summary = "Company row found but journey row not found; source activity is empty"
+        source_type = "lk_focus_report_company.source_activity_json.not_found"
+        source_summary = "Company row found, but source_activity_json and generated source activity are empty"
     else:
         source_type = "not_found"
-        source_summary = "Company, company log, and journey source rows not found; source activity is empty"
+        source_summary = "Company and company log rows not found; source activity is empty"
 
     sql = """
         INSERT INTO lk_focus_agent_report_priority_account
