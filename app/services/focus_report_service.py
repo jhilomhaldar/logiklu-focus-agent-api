@@ -280,19 +280,68 @@ def _fetch_company_report_snapshot(
     )
 
 
-def _fetch_company_journey_snapshot(
+def _fetch_company_log_snapshot(
     cursor,
     source_report_id: int,
     account_id: int,
 ) -> Optional[Dict[str, Any]]:
-    """Fetch journey row used to generate source activity.
+    """Fetch source company log row when available.
 
-    Business rule:
-    AI will not post source activity. The API prepares source activity from
-    lk_focus_report_company_journey.journey_timeline_json for the same
-    report/account and stores it in lk_focus_agent_report_priority_account.source_json.
+    Journey rows are uniquely tied to lk_focus_report_company_journey.report_company_log_id,
+    so this is the most reliable bridge from the old calculated report to the
+    new AI priority account row.
     """
     sql = """
+        SELECT
+            report_company_log_id,
+            report_id,
+            lead_id,
+            visitors_name,
+            country,
+            state,
+            city,
+            website,
+            priority_score,
+            priority_label,
+            engagement_level,
+            final_score,
+            report_rank,
+            created_date
+        FROM lk_focus_report_company_log
+        WHERE report_id = %s
+          AND lead_id = %s
+        ORDER BY
+            CASE WHEN report_rank IS NULL THEN 1 ELSE 0 END ASC,
+            report_rank ASC,
+            final_score DESC,
+            report_company_log_id DESC
+        LIMIT 1
+    """
+
+    try:
+        return _fetch_one(
+            cursor,
+            sql,
+            (source_report_id, account_id),
+        )
+    except Exception:
+        return None
+
+
+def _fetch_company_journey_snapshot(
+    cursor,
+    source_report_id: int,
+    report_uid: str,
+    report_batch_uid: str,
+    account_id: int,
+    source_company_log_id: int = 0,
+) -> Optional[Dict[str, Any]]:
+    """Fetch journey row used to generate source activity.
+
+    First preference is report_company_log_id because journey has a unique key on it.
+    Then fall back to report_id/report_uid/report_batch_uid with lead_id.
+    """
+    select_sql = """
         SELECT
             journey_id,
             report_id,
@@ -315,8 +364,9 @@ def _fetch_company_journey_snapshot(
             final_score,
             created_date
         FROM lk_focus_report_company_journey
-        WHERE report_id = %s
-          AND lead_id = %s
+    """
+
+    order_sql = """
         ORDER BY
             CASE WHEN is_shortlisted = 'Y' THEN 0 ELSE 1 END ASC,
             CASE WHEN shortlisted_rank IS NULL THEN 1 ELSE 0 END ASC,
@@ -326,11 +376,44 @@ def _fetch_company_journey_snapshot(
         LIMIT 1
     """
 
-    return _fetch_one(
-        cursor,
-        sql,
-        (source_report_id, account_id),
-    )
+    attempts: List[Tuple[str, Tuple[Any, ...]]] = []
+
+    if source_company_log_id > 0:
+        attempts.append((
+            select_sql + " WHERE report_company_log_id = %s " + order_sql,
+            (source_company_log_id,),
+        ))
+
+    if source_report_id > 0 and account_id > 0:
+        attempts.append((
+            select_sql + " WHERE report_id = %s AND lead_id = %s " + order_sql,
+            (source_report_id, account_id),
+        ))
+
+    if report_uid and report_batch_uid and account_id > 0:
+        attempts.append((
+            select_sql + " WHERE report_uid = %s AND report_batch_uid = %s AND lead_id = %s " + order_sql,
+            (report_uid, report_batch_uid, account_id),
+        ))
+
+    if report_uid and account_id > 0:
+        attempts.append((
+            select_sql + " WHERE report_uid = %s AND lead_id = %s " + order_sql,
+            (report_uid, account_id),
+        ))
+
+    if report_batch_uid and account_id > 0:
+        attempts.append((
+            select_sql + " WHERE report_batch_uid = %s AND lead_id = %s " + order_sql,
+            (report_batch_uid, account_id),
+        ))
+
+    for sql, params in attempts:
+        row = _fetch_one(cursor, sql, params)
+        if row:
+            return row
+
+    return None
 
 
 def _date_only(value: Any) -> str:
@@ -624,6 +707,7 @@ def _insert_priority_account(
     report_batch_uid: str,
     item: Dict[str, Any],
     company_report: Optional[Dict[str, Any]],
+    company_log_report: Optional[Dict[str, Any]],
     journey_report: Optional[Dict[str, Any]],
 ) -> None:
     account_id = _safe_int(item.get("account_id"), 0)
@@ -640,6 +724,9 @@ def _insert_priority_account(
     if not account_insight_summary and company_report:
         account_insight_summary = _safe_str(company_report.get("insight_summary"))
 
+    if not company_report and company_log_report:
+        company_report = company_log_report
+
     # Source activity is generated from the journey timeline.
     # AI-posted payload must not override or add source content.
     source_json = _build_source_activity_from_journey(journey_report)
@@ -648,18 +735,23 @@ def _insert_priority_account(
     source_company_log_id = None
     if journey_report:
         source_company_log_id = _safe_int(journey_report.get("report_company_log_id"), 0)
+    elif company_log_report:
+        source_company_log_id = _safe_int(company_log_report.get("report_company_log_id"), 0)
     elif company_report:
         source_company_log_id = _safe_int(company_report.get("report_company_id"), 0)
 
     if journey_report:
         source_type = "lk_focus_report_company_journey.journey_timeline_json"
-        source_summary = "Source activity generated from journey timeline session sources"
+        source_summary = str(len(source_json)) + " source activity item(s) generated from journey timeline session sources"
+    elif company_log_report:
+        source_type = "lk_focus_report_company_journey.not_found"
+        source_summary = "Company log row found but journey row not found; source activity is empty"
     elif company_report:
         source_type = "lk_focus_report_company_journey.not_found"
         source_summary = "Company row found but journey row not found; source activity is empty"
     else:
         source_type = "not_found"
-        source_summary = "Company and journey source rows not found; source activity is empty"
+        source_summary = "Company, company log, and journey source rows not found; source activity is empty"
 
     sql = """
         INSERT INTO lk_focus_agent_report_priority_account
@@ -846,10 +938,22 @@ def save_current_focus_report(client_database: str, payload: Dict[str, Any], aut
                 source_report_id=source_report_id,
                 account_id=account_id,
             )
-            journey_report = _fetch_company_journey_snapshot(
+            company_log_report = _fetch_company_log_snapshot(
                 cursor=cursor,
                 source_report_id=source_report_id,
                 account_id=account_id,
+            )
+            source_company_log_id = 0
+            if company_log_report:
+                source_company_log_id = _safe_int(company_log_report.get("report_company_log_id"), 0)
+
+            journey_report = _fetch_company_journey_snapshot(
+                cursor=cursor,
+                source_report_id=source_report_id,
+                report_uid=report_uid,
+                report_batch_uid=report_batch_uid,
+                account_id=account_id,
+                source_company_log_id=source_company_log_id,
             )
             _insert_priority_account(
                 cursor=cursor,
@@ -859,6 +963,7 @@ def save_current_focus_report(client_database: str, payload: Dict[str, Any], aut
                 report_batch_uid=report_batch_uid,
                 item=item,
                 company_report=company_report,
+                company_log_report=company_log_report,
                 journey_report=journey_report,
             )
 
@@ -940,8 +1045,9 @@ def _normalize_priority_account_row(row: Dict[str, Any]) -> Dict[str, Any]:
             },
             "snapshot": _parse_json_column(row.get("account_snapshot_json"), {}),
         },
-        # source is the source activity array generated from
+        # source_activity is stored in source_json and generated from
         # lk_focus_report_company_journey.journey_timeline_json.
+        "source_activity": _parse_json_column(row.get("source_json"), []),
         "source": _parse_json_column(row.get("source_json"), []),
         "source_reference": {
             "source_company_id": row.get("source_company_log_id"),
