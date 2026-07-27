@@ -236,10 +236,9 @@ def _fetch_company_report_snapshot(
 ) -> Optional[Dict[str, Any]]:
     """Fetch old company report row from lk_focus_report_company.
 
-    This row is used for account snapshot/details only.
-    Source activity is generated separately from
-    lk_focus_report_company_journey.journey_timeline_json.
-    AI does not post source data.
+    This row is used for account snapshot/details and as a fallback for
+    track_lead_ids / existing source_activity_json.  Primary source generation
+    uses lk_focus_report_company_log.track_lead_ids.  AI does not post source data.
     """
     sql = """
         SELECT
@@ -288,18 +287,23 @@ def _fetch_company_report_snapshot(
 def _fetch_company_log_snapshot(
     cursor,
     source_report_id: int,
+    report_uid: str,
+    report_batch_uid: str,
     account_id: int,
 ) -> Optional[Dict[str, Any]]:
-    """Fetch source company log row when available.
+    """Fetch the old calculated company-log row without using POSTed source_company_log_id.
 
-    Journey rows are uniquely tied to lk_focus_report_company_journey.report_company_log_id,
-    so this is the most reliable bridge from the old calculated report to the
-    new AI priority account row.
+    The lookup is owned entirely by the backend.  The primary key is resolved from
+    report/account identity and then track_lead_ids from this row are used to build
+    source activity.  The old PHP writer stores shortlisted_rank (not report_rank),
+    so this query intentionally uses the real company-log column names.
     """
-    sql = """
+    select_sql = """
         SELECT
             report_company_log_id,
             report_id,
+            report_uid,
+            report_batch_uid,
             lead_id,
             visitors_name,
             country,
@@ -315,27 +319,54 @@ def _fetch_company_log_snapshot(
             priority_label,
             engagement_level,
             final_score,
-            report_rank,
+            is_shortlisted,
+            shortlisted_rank,
             created_date
         FROM lk_focus_report_company_log
-        WHERE report_id = %s
-          AND lead_id = %s
+    """
+
+    order_sql = """
         ORDER BY
-            CASE WHEN report_rank IS NULL THEN 1 ELSE 0 END ASC,
-            report_rank ASC,
+            CASE WHEN is_shortlisted = 'Y' THEN 0 ELSE 1 END ASC,
+            CASE WHEN shortlisted_rank IS NULL THEN 1 ELSE 0 END ASC,
+            shortlisted_rank ASC,
             final_score DESC,
             report_company_log_id DESC
         LIMIT 1
     """
 
-    try:
-        return _fetch_one(
-            cursor,
-            sql,
+    attempts: List[Tuple[str, Tuple[Any, ...]]] = []
+
+    if source_report_id > 0 and account_id > 0:
+        attempts.append((
+            select_sql + " WHERE report_id = %s AND lead_id = %s " + order_sql,
             (source_report_id, account_id),
-        )
-    except Exception:
-        return None
+        ))
+
+    if report_uid and report_batch_uid and account_id > 0:
+        attempts.append((
+            select_sql + " WHERE report_uid = %s AND report_batch_uid = %s AND lead_id = %s " + order_sql,
+            (report_uid, report_batch_uid, account_id),
+        ))
+
+    if report_uid and account_id > 0:
+        attempts.append((
+            select_sql + " WHERE report_uid = %s AND lead_id = %s " + order_sql,
+            (report_uid, account_id),
+        ))
+
+    if report_batch_uid and account_id > 0:
+        attempts.append((
+            select_sql + " WHERE report_batch_uid = %s AND lead_id = %s " + order_sql,
+            (report_batch_uid, account_id),
+        ))
+
+    for sql, params in attempts:
+        row = _fetch_one(cursor, sql, params)
+        if row:
+            return row
+
+    return None
 
 
 def _fetch_company_journey_snapshot(
@@ -995,13 +1026,13 @@ def _insert_priority_account(
 
     account_snapshot = _build_account_snapshot(company_report, account_id)
 
+    # This column must contain only a real lk_focus_report_company_log.report_company_log_id.
+    # Never copy lk_focus_report_company.report_company_id into it.
     source_company_log_id = None
     if company_log_report:
         source_company_log_id = _safe_int(company_log_report.get("report_company_log_id"), 0)
     elif journey_report:
         source_company_log_id = _safe_int(journey_report.get("report_company_log_id"), 0)
-    elif company_report:
-        source_company_log_id = _safe_int(company_report.get("report_company_id"), 0)
 
     if source_json:
         source_type = source_builder
@@ -1013,13 +1044,13 @@ def _insert_priority_account(
             source_summary = str(len(source_json)) + " source activity item(s) copied from existing focus report company source_activity_json"
     elif company_log_report:
         source_type = "lk_link_visits.not_found"
-        source_summary = "Company log row found, but no campaign/direct source activity could be generated"
+        source_summary = "Company log row found automatically, but no campaign/direct source activity could be generated from track_lead_ids/first visit"
     elif company_report:
-        source_type = "lk_focus_report_company.source_activity_json.not_found"
-        source_summary = "Company row found, but source_activity_json and generated source activity are empty"
+        source_type = "lk_focus_report_company_log.not_found"
+        source_summary = "Company row found, but matching company log row was not found automatically; fallback source_activity_json is empty"
     else:
         source_type = "not_found"
-        source_summary = "Company and company log rows not found; source activity is empty"
+        source_summary = "Company and company log rows were not found for the posted report/account; source activity is empty"
 
     sql = """
         INSERT INTO lk_focus_agent_report_priority_account
@@ -1209,6 +1240,8 @@ def save_current_focus_report(client_database: str, payload: Dict[str, Any], aut
             company_log_report = _fetch_company_log_snapshot(
                 cursor=cursor,
                 source_report_id=source_report_id,
+                report_uid=report_uid,
+                report_batch_uid=report_batch_uid,
                 account_id=account_id,
             )
             source_company_log_id = 0
