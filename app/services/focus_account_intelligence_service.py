@@ -802,6 +802,52 @@ def build_where_clause(
     return " AND ".join(where_parts), params
 
 
+
+def build_reporting_window(report_row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not report_row:
+        return None
+
+    return {
+        "report_id": report_row.get("report_id"),
+        "report_uid": report_row.get("report_uid"),
+        "report_batch_uid": report_row.get("report_batch_uid"),
+        "from_date": format_date(report_row.get("dataset_period_start")),
+        "to_date": format_date(report_row.get("dataset_period_end")),
+        "window_days": int(report_row.get("dataset_period") or 0),
+        "report_period": int(report_row.get("report_period") or 0),
+        "report_period_label": report_row.get("report_period_label"),
+        "timezone": TIMEZONE_NAME,
+    }
+
+
+def fetch_current_focus_report(connection: Any) -> Optional[Dict[str, Any]]:
+    sql = """
+        SELECT
+            report_id,
+            report_uid,
+            report_batch_uid,
+            dataset_period,
+            report_period,
+            report_period_label,
+            dataset_period_start,
+            dataset_period_end,
+            track_date,
+            created_date
+        FROM lk_focus_report_master
+        WHERE is_current = 'Y'
+          AND report_status = 'active'
+        ORDER BY
+            track_date DESC,
+            report_id DESC
+        LIMIT 1
+    """
+
+    with connection.cursor() as cursor:
+        cursor.execute(sql)
+        return cursor.fetchone()
+
+
+
 def fetch_focus_account_intelligence_list(
     client_database: str,
     page: int = 1,
@@ -817,12 +863,40 @@ def fetch_focus_account_intelligence_list(
 ) -> Dict[str, Any]:
     connection = None
 
+    try:
+        page = int(page)
+    except Exception:
+        page = 1
+
+    try:
+        per_page = int(per_page)
+    except Exception:
+        per_page = 10
+
     page = max(page, 1)
-    per_page = max(per_page, 10)
+    per_page = max(per_page, 1)
     offset = (page - 1) * per_page
 
     try:
         connection = get_client_connection(client_database)
+
+        current_report = fetch_current_focus_report(connection)
+        reporting_window = build_reporting_window(current_report)
+
+        if not current_report:
+            return {
+                "items": [],
+                "pagination": {
+                    "page": page,
+                    "per_page": per_page,
+                    "offset": offset,
+                    "record_count": 0,
+                    "total_records": 0,
+                    "total_pages": 0,
+                    "has_next": False,
+                    "has_previous": page > 1,
+                },
+            }
 
         where_clause, params = build_where_clause(
             search=search,
@@ -833,6 +907,9 @@ def fetch_focus_account_intelligence_list(
             priority_label=priority_label,
             is_shortlisted=is_shortlisted,
         )
+
+        where_clause = "frm.report_id = %s AND " + where_clause
+        params = [int(current_report.get("report_id"))] + params
 
         count_sql = f"""
             SELECT COUNT(*) AS total_records
@@ -958,6 +1035,7 @@ def fetch_focus_account_intelligence_list(
         items = [
             build_focus_account_intelligence_item(
                 row=row,
+                reporting_window=reporting_window,
                 include_journey=include_journey,
             )
             for row in rows
@@ -984,6 +1062,7 @@ def fetch_focus_account_intelligence_list(
 
 def build_focus_account_intelligence_item(
     row: Dict[str, Any],
+    reporting_window: Optional[Dict[str, Any]] = None,
     include_journey: bool = False,
 ) -> Dict[str, Any]:
     score_explanation = (
@@ -1016,6 +1095,7 @@ def build_focus_account_intelligence_item(
 
     item = {
         "schema_version": SCHEMA_VERSION,
+        "reporting_window": reporting_window or build_reporting_window(row),
         "account": {
             "account_id": row.get("lead_id"),
             "company_id": row.get("lead_id"),
@@ -1048,17 +1128,6 @@ def build_focus_account_intelligence_item(
                 "city": first_non_empty(row.get("city"), row.get("focus_city")),
             },
             "industry": row.get("industry"),
-        },
-        "reporting_window": {
-            "report_id": row.get("report_id"),
-            "report_uid": row.get("report_uid"),
-            "report_batch_uid": row.get("report_batch_uid"),
-            "from_date": format_date(row.get("dataset_period_start")),
-            "to_date": format_date(row.get("dataset_period_end")),
-            "window_days": int(row.get("dataset_period") or 0),
-            "report_period": int(row.get("report_period") or 0),
-            "report_period_label": row.get("report_period_label"),
-            "timezone": TIMEZONE_NAME,
         },
         "deterministic_scores": {
             "score_components": {
