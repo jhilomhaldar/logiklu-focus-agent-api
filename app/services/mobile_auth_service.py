@@ -619,14 +619,15 @@ def fetch_user_and_group_by_id(user_id: int) -> Dict[str, Any]:
 
 def _get_handoff_ttl_seconds() -> int:
     try:
-        value = int(os.getenv("MOBILE_WEB_HANDOFF_EXPIRE_SECONDS", "60"))
+        value = int(os.getenv("MOBILE_WEB_HANDOFF_EXPIRE_SECONDS", "3600"))
     except Exception:
-        value = 60
+        value = 3600
 
     if value < 15:
         value = 15
-    if value > 300:
-        value = 300
+    if value > 3600:
+        value = 3600
+
     return value
 
 
