@@ -565,6 +565,7 @@ def authenticate_mobile_login(
         user_id=user_id,
         group_code=_safe_str(group.get("group_code")),
         login_point=login_point,
+        auth_version=_safe_int(user.get("auth_token_version"), 1),
     )
 
     record_login(user_id, client_ip)
@@ -619,15 +620,14 @@ def fetch_user_and_group_by_id(user_id: int) -> Dict[str, Any]:
 
 def _get_handoff_ttl_seconds() -> int:
     try:
-        value = int(os.getenv("MOBILE_WEB_HANDOFF_EXPIRE_SECONDS", "3600"))
+        value = int(os.getenv("MOBILE_WEB_HANDOFF_EXPIRE_SECONDS", "60"))
     except Exception:
-        value = 3600
+        value = 60
 
     if value < 15:
         value = 15
-    if value > 3600:
-        value = 3600
-
+    if value > 300:
+        value = 300
     return value
 
 
@@ -796,7 +796,7 @@ def create_web_session_handoff(
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO logiklu_mobile_web_handoff
+                INSERT INTO lk_mobile_web_handoff
                 (
                     token_hash,
                     api_environment,
@@ -877,7 +877,7 @@ def consume_web_session_handoff(token: str) -> Dict[str, Any]:
             cursor.execute(
                 """
                 SELECT *
-                FROM logiklu_mobile_web_handoff
+                FROM lk_mobile_web_handoff
                 WHERE token_hash = %s
                   AND api_environment = %s
                 LIMIT 1
@@ -911,7 +911,7 @@ def consume_web_session_handoff(token: str) -> Dict[str, Any]:
 
             cursor.execute(
                 """
-                UPDATE logiklu_mobile_web_handoff
+                UPDATE lk_mobile_web_handoff
                 SET used_date = %s
                 WHERE handoff_id = %s
                   AND used_date IS NULL

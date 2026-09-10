@@ -40,3 +40,17 @@ class DeviceLogoutRequest(BaseModel):
 
 class DeviceForgotPasswordRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=255)
+
+
+
+class DeviceUserManagementRequest(BaseModel):
+    # Logged-in LogiKlu user performing the action.
+    # Supply either user_id or email.
+    user_id: Optional[int] = Field(default=None, gt=0)
+    email: Optional[str] = None
+
+    # Omit both target fields for self action.
+    # For Super Admin/developer action on another user, supply either
+    # target_user_id or target_email.
+    target_user_id: Optional[int] = Field(default=None, gt=0)
+    target_email: Optional[str] = None
