@@ -500,6 +500,9 @@ def get_endpoint_auth_type(endpoint: Dict[str, Any]) -> str:
     if auth_type in ("api_key", "x_api_key", "x-api-key", "legacy_api_key"):
         return "api_key"
 
+    if auth_type in ("mail_password", "mail-password", "x_mail_password", "x-mail-password"):
+        return "mail_password"
+
     if auth_type in ("bearer", "jwt", "jwt_bearer", "oauth", "oauth_jwt"):
         return "bearer"
 
@@ -599,6 +602,30 @@ def rewrite_code_auth(language: str, code: str, url: str, auth_type: str = "bear
         return code
 
     if auth_type in ("api_key", "x_api_key", "x-api-key", "legacy_api_key"):
+        return code
+
+    if auth_type in ("mail_password", "mail-password", "x_mail_password", "x-mail-password"):
+        replacements = [
+            ("X-API-KEY: YOUR_API_KEY", "X-MAIL-PASSWORD: YOUR_MAIL_ENDPOINT_PASSWORD"),
+            ('$apiKey = "YOUR_API_KEY";', '$mailPassword = "YOUR_MAIL_ENDPOINT_PASSWORD";'),
+            ('"X-API-KEY: " . $apiKey', '"X-MAIL-PASSWORD: " . $mailPassword'),
+            ('api_key = "YOUR_API_KEY"', 'mail_password = "YOUR_MAIL_ENDPOINT_PASSWORD"'),
+            ('"X-API-KEY": api_key', '"X-MAIL-PASSWORD": mail_password'),
+            ('const apiKey = "YOUR_API_KEY";', 'const mailPassword = "YOUR_MAIL_ENDPOINT_PASSWORD";'),
+            ('"X-API-KEY": apiKey', '"X-MAIL-PASSWORD": mailPassword'),
+            ('String apiKey = "YOUR_API_KEY";', 'String mailPassword = "YOUR_MAIL_ENDPOINT_PASSWORD";'),
+            ('.header("X-API-KEY", apiKey)', '.header("X-MAIL-PASSWORD", mailPassword)'),
+            ('string apiKey = "YOUR_API_KEY";', 'string mailPassword = "YOUR_MAIL_ENDPOINT_PASSWORD";'),
+            ('client.DefaultRequestHeaders.Add("X-API-KEY", apiKey);',
+             'client.DefaultRequestHeaders.Add("X-MAIL-PASSWORD", mailPassword);'),
+            ('request["X-API-KEY"] = api_key', 'request["X-MAIL-PASSWORD"] = mail_password'),
+            ('apiKey := "YOUR_API_KEY"', 'mailPassword := "YOUR_MAIL_ENDPOINT_PASSWORD"'),
+            ('req.Header.Set("X-API-KEY", apiKey)', 'req.Header.Set("X-MAIL-PASSWORD", mailPassword)'),
+        ]
+
+        for old, new in replacements:
+            code = code.replace(old, new)
+
         return code
 
     replacements = [
@@ -982,6 +1009,24 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
         </div>
         """
         submit_label = "Send Request"
+    elif auth_type == "mail_password":
+        auth_note = "Enter the service-level mail endpoint password, then click Send Request."
+        auth_box = """
+        <div class="try-field">
+            <label>
+                <span>Mail Endpoint Password</span>
+                <small>Required · X-MAIL-PASSWORD</small>
+            </label>
+            <input
+                type="password"
+                data-mail-password
+                placeholder="YOUR_MAIL_ENDPOINT_PASSWORD"
+                autocomplete="off"
+            />
+            <p>This is the LogiKlu mail endpoint password, not an API client key or OAuth token.</p>
+        </div>
+        """
+        submit_label = "Send Request"
     else:
         auth_note = "Enter a Bearer access token generated from /oauth/token, or click Use Saved Token if already generated on this page."
         auth_box = """
@@ -1008,6 +1053,10 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
         </div>
         """
         submit_label = "Send Request"
+
+    custom_auth_note = str(endpoint.get("auth_note") or "").strip()
+    if custom_auth_note:
+        auth_note = custom_auth_note
 
     try_grid = ""
 
@@ -3040,6 +3089,19 @@ async function sendTryOutRequest(button) {
         }
 
         headers['X-API-KEY'] = apiKey;
+    } else if (authType === 'mail_password') {
+        const mailPasswordInput = box.querySelector('[data-mail-password]');
+        const mailPassword = mailPasswordInput ? mailPasswordInput.value.trim() : '';
+
+        if (!mailPassword) {
+            responseBox.textContent = JSON.stringify({
+                status: 'error',
+                message: 'Please enter the mail endpoint password first.'
+            }, null, 2);
+            return;
+        }
+
+        headers['X-MAIL-PASSWORD'] = mailPassword;
     }
 
     const options = {
