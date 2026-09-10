@@ -8,6 +8,8 @@ from typing import Any, Dict
 
 from fastapi import Request
 
+from app.db.master import get_master_connection
+
 from app.core.security import (
     base64url_decode,
     create_jwt_token,
@@ -38,6 +40,7 @@ def issue_mobile_user_token(
     user_id: int,
     group_code: str,
     login_point: int,
+    auth_version: int = 1,
 ) -> Dict[str, Any]:
     now_ts = int(time.time())
     expires_in = get_mobile_token_expire_seconds()
@@ -54,6 +57,7 @@ def issue_mobile_user_token(
         "user_id": int(user_id),
         "group_code": str(group_code or ""),
         "login_point": int(login_point or 0),
+        "auth_version": int(auth_version or 1),
     }
 
     return {
@@ -62,6 +66,49 @@ def issue_mobile_user_token(
         "expires_in": expires_in,
     }
 
+
+
+def _current_user_auth_version(user_id: int) -> int:
+    """
+    Return the current global user-token version.
+
+    Incrementing zp_users.auth_token_version immediately invalidates every
+    previously issued LogiKlu mobile/device access JWT for that user.
+    """
+    connection = None
+    try:
+        connection = get_master_connection()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT auth_token_version
+                FROM zp_users
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (int(user_id),),
+            )
+            row = cursor.fetchone()
+
+        if not row:
+            raise MobileTokenError("User no longer exists")
+
+        try:
+            value = int(row.get("auth_token_version") or 1)
+        except Exception:
+            value = 1
+
+        return value if value > 0 else 1
+
+    except MobileTokenError:
+        raise
+    except Exception as exc:
+        raise MobileTokenError(
+            "Unable to validate mobile access token"
+        ) from exc
+    finally:
+        if connection:
+            connection.close()
 
 def decode_mobile_user_token(token: str) -> Dict[str, Any]:
     try:
@@ -107,6 +154,20 @@ def decode_mobile_user_token(token: str) -> Dict[str, Any]:
         user_id = int(payload.get("user_id") or 0)
         if user_id <= 0:
             raise MobileTokenError("Mobile access token does not contain a valid user")
+
+        # Tokens issued before auth_token_version was added are treated as
+        # version 1. Once logout-all/delete-all increments the database value,
+        # those old tokens are invalid immediately.
+        try:
+            token_auth_version = int(payload.get("auth_version") or 1)
+        except Exception:
+            token_auth_version = 1
+
+        current_auth_version = _current_user_auth_version(user_id)
+        if token_auth_version != current_auth_version:
+            raise MobileTokenError(
+                "This login has been revoked. Please sign in again."
+            )
 
         return payload
 

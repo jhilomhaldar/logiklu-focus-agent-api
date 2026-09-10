@@ -503,6 +503,9 @@ def get_endpoint_auth_type(endpoint: Dict[str, Any]) -> str:
     if auth_type in ("mail_password", "mail-password", "x_mail_password", "x-mail-password"):
         return "mail_password"
 
+    if auth_type in ("app_password", "app-password", "x_app_password", "x-app-password"):
+        return "app_password"
+
     if auth_type in ("bearer", "jwt", "jwt_bearer", "oauth", "oauth_jwt"):
         return "bearer"
 
@@ -602,6 +605,30 @@ def rewrite_code_auth(language: str, code: str, url: str, auth_type: str = "bear
         return code
 
     if auth_type in ("api_key", "x_api_key", "x-api-key", "legacy_api_key"):
+        return code
+
+    if auth_type in ("app_password", "app-password", "x_app_password", "x-app-password"):
+        replacements = [
+            ("X-API-KEY: YOUR_API_KEY", "X-APP-PASSWORD: YOUR_APP_PASSWORD"),
+            ('$apiKey = "YOUR_API_KEY";', '$appPassword = "YOUR_APP_PASSWORD";'),
+            ('"X-API-KEY: " . $apiKey', '"X-APP-PASSWORD: " . $appPassword'),
+            ('api_key = "YOUR_API_KEY"', 'app_password = "YOUR_APP_PASSWORD"'),
+            ('"X-API-KEY": api_key', '"X-APP-PASSWORD": app_password'),
+            ('const apiKey = "YOUR_API_KEY";', 'const appPassword = "YOUR_APP_PASSWORD";'),
+            ('"X-API-KEY": apiKey', '"X-APP-PASSWORD": appPassword'),
+            ('String apiKey = "YOUR_API_KEY";', 'String appPassword = "YOUR_APP_PASSWORD";'),
+            ('.header("X-API-KEY", apiKey)', '.header("X-APP-PASSWORD", appPassword)'),
+            ('string apiKey = "YOUR_API_KEY";', 'string appPassword = "YOUR_APP_PASSWORD";'),
+            ('client.DefaultRequestHeaders.Add("X-API-KEY", apiKey);',
+             'client.DefaultRequestHeaders.Add("X-APP-PASSWORD", appPassword);'),
+            ('request["X-API-KEY"] = api_key', 'request["X-APP-PASSWORD"] = app_password'),
+            ('apiKey := "YOUR_API_KEY"', 'appPassword := "YOUR_APP_PASSWORD"'),
+            ('req.Header.Set("X-API-KEY", apiKey)', 'req.Header.Set("X-APP-PASSWORD", appPassword)'),
+        ]
+
+        for old, new in replacements:
+            code = code.replace(old, new)
+
         return code
 
     if auth_type in ("mail_password", "mail-password", "x_mail_password", "x-mail-password"):
@@ -1006,6 +1033,24 @@ def render_try_out(endpoint: Dict[str, Any], base_url: str) -> str:
                 <small>Required</small>
             </label>
             <input type="password" data-api-key placeholder="YOUR_API_KEY" />
+        </div>
+        """
+        submit_label = "Send Request"
+    elif auth_type == "app_password":
+        auth_note = "Enter the LogiKlu App Password, then click Send Request."
+        auth_box = """
+        <div class="try-field">
+            <label>
+                <span>App Password</span>
+                <small>Required · X-APP-PASSWORD</small>
+            </label>
+            <input
+                type="password"
+                data-app-password
+                placeholder="YOUR_APP_PASSWORD"
+                autocomplete="off"
+            />
+            <p>This endpoint does not use Authorization or an API client key.</p>
         </div>
         """
         submit_label = "Send Request"
@@ -3089,6 +3134,19 @@ async function sendTryOutRequest(button) {
         }
 
         headers['X-API-KEY'] = apiKey;
+    } else if (authType === 'app_password') {
+        const appPasswordInput = box.querySelector('[data-app-password]');
+        const appPassword = appPasswordInput ? appPasswordInput.value.trim() : '';
+
+        if (!appPassword) {
+            responseBox.textContent = JSON.stringify({
+                status: 'error',
+                message: 'Please enter the App Password first.'
+            }, null, 2);
+            return;
+        }
+
+        headers['X-APP-PASSWORD'] = appPassword;
     } else if (authType === 'mail_password') {
         const mailPasswordInput = box.querySelector('[data-mail-password]');
         const mailPassword = mailPasswordInput ? mailPasswordInput.value.trim() : '';

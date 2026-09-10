@@ -485,6 +485,7 @@ def _complete_authenticated_response(
         user_id=_safe_int(user.get("id")),
         group_code=_safe_str(group.get("group_code")),
         login_point=_safe_int(group.get("login_point")),
+        auth_version=_safe_int(user.get("auth_token_version"), 1),
     )
 
     account_context = _build_account_context(
@@ -1731,6 +1732,470 @@ def logout_device_session(
         "data": {"authentication_status": "logged_out"},
     }
 
+
+
+# ---------------------------------------------------------------------------
+# Device management
+# ---------------------------------------------------------------------------
+
+
+
+def _authorize_device_management_action(
+    cursor,
+    caller_user_id: Optional[int] = None,
+    caller_email: Optional[str] = None,
+    target_user_id: Optional[int] = None,
+    target_email: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], bool]:
+    """
+    Resolve caller and target only.
+
+    IMPORTANT:
+    The API does NOT enforce Super Admin/developer permission.
+    Cross-user permission is decided by the calling LogiKlu application
+    from its already-authenticated session.
+
+    This API validates the App Password, resolves caller/target identifiers,
+    and performs the requested action.
+    """
+    caller_user_id = _safe_int(caller_user_id)
+    caller_email = _safe_str(caller_email).strip().lower()
+
+    if caller_user_id <= 0 and not caller_email:
+        raise DeviceAuthServiceError(
+            "User ID or email address is required",
+            "AUTH_CALLER_IDENTIFIER_REQUIRED",
+            422,
+        )
+
+    if caller_user_id > 0 and caller_email:
+        cursor.execute(
+            """
+            SELECT *
+            FROM zp_users
+            WHERE id = %s
+              AND LOWER(TRIM(email)) = %s
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (caller_user_id, caller_email),
+        )
+    elif caller_user_id > 0:
+        cursor.execute(
+            "SELECT * FROM zp_users WHERE id = %s LIMIT 1 FOR UPDATE",
+            (caller_user_id,),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT *
+            FROM zp_users
+            WHERE LOWER(TRIM(email)) = %s
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (caller_email,),
+        )
+
+    caller = cursor.fetchone()
+
+    if not caller:
+        raise DeviceAuthServiceError(
+            "Logged-in user does not exist",
+            "AUTH_CALLER_NOT_FOUND",
+            404,
+        )
+
+    if not _is_active_user_status(caller.get("status")):
+        raise DeviceAuthServiceError(
+            "This user is not active. Please contact Administrator",
+            "AUTH_USER_INACTIVE",
+            403,
+        )
+
+    caller_id = _safe_int(caller.get("id"))
+    caller_group = _fetch_access_group_with_cursor(cursor, caller_id) or {}
+
+    target_user_id = _safe_int(target_user_id)
+    target_email = _safe_str(target_email).strip().lower()
+
+    # No explicit target means self.
+    if target_user_id <= 0 and not target_email:
+        return caller, caller_group, caller, False
+
+    if target_user_id > 0 and target_email:
+        cursor.execute(
+            """
+            SELECT *
+            FROM zp_users
+            WHERE id = %s
+              AND LOWER(TRIM(email)) = %s
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (target_user_id, target_email),
+        )
+    elif target_user_id > 0:
+        cursor.execute(
+            "SELECT * FROM zp_users WHERE id = %s LIMIT 1 FOR UPDATE",
+            (target_user_id,),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT *
+            FROM zp_users
+            WHERE LOWER(TRIM(email)) = %s
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (target_email,),
+        )
+
+    target = cursor.fetchone()
+
+    if not target:
+        raise DeviceAuthServiceError(
+            "Target user does not exist",
+            "AUTH_TARGET_USER_NOT_FOUND",
+            404,
+            {
+                "target_user_id": target_user_id if target_user_id > 0 else None,
+                "target_email": target_email or None,
+            },
+        )
+
+    is_cross_user_action = _safe_int(target.get("id")) != caller_id
+    return caller, caller_group, target, is_cross_user_action
+
+def _revoke_all_user_sessions_with_cursor(
+    cursor,
+    target_user_id: int,
+    now: datetime,
+    revoked_reason: str,
+) -> int:
+    """
+    Revoke both current device-auth rows and older/legacy zp_user_login rows
+    that are still open.
+    """
+    cursor.execute(
+        """
+        UPDATE zp_user_login
+        SET
+            logout_time = COALESCE(logout_time, %s),
+            revoked_date = COALESCE(revoked_date, %s),
+            revoked_reason = %s,
+            session_status = 'revoked'
+        WHERE user_id = %s
+          AND (
+                session_status = 'active'
+                OR (session_status IS NULL AND logout_time IS NULL)
+              )
+        """,
+        (
+            now,
+            now,
+            revoked_reason,
+            target_user_id,
+        ),
+    )
+    return max(_safe_int(cursor.rowcount), 0)
+
+
+def _increment_auth_token_version_with_cursor(
+    cursor,
+    target_user_id: int,
+) -> int:
+    """
+    Invalidates all existing LogiKlu mobile/device access JWTs for this user.
+    New logins receive the incremented version.
+    """
+    cursor.execute(
+        """
+        UPDATE zp_users
+        SET auth_token_version = COALESCE(auth_token_version, 1) + 1
+        WHERE id = %s
+        """,
+        (target_user_id,),
+    )
+
+    cursor.execute(
+        """
+        SELECT auth_token_version
+        FROM zp_users
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (target_user_id,),
+    )
+    row = cursor.fetchone() or {}
+    return max(_safe_int(row.get("auth_token_version"), 1), 1)
+
+
+def logout_all_device_sessions(
+    caller_user_id: Optional[int] = None,
+    caller_email: Optional[str] = None,
+    target_user_id: Optional[int] = None,
+    target_email: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Log a user out from every device without deleting trusted-device records.
+
+    - Self: a logged-in user can log out their own devices.
+    - Admin: superadmin/developer can target another user.
+    - All refresh/login sessions are revoked.
+    - All existing access JWTs are invalidated through auth_token_version.
+    - Trusted saved devices remain saved and active, so the next manual
+      username/password login can skip OTP while the 90-day trust is valid.
+    - Any pending OTP challenge is cancelled.
+    """
+    now = _utcnow()
+    connection = None
+
+    try:
+        connection = get_master_connection()
+        connection.begin()
+
+        with connection.cursor() as cursor:
+            caller, caller_group, target, is_cross_user_action = (
+                _authorize_device_management_action(
+                    cursor=cursor,
+                    caller_user_id=caller_user_id,
+                    caller_email=caller_email,
+                    target_user_id=target_user_id,
+                    target_email=target_email,
+                )
+            )
+
+            target_id = _safe_int(target.get("id"))
+
+            cursor.execute(
+                """
+                SELECT
+                    COUNT(*) AS saved_devices,
+                    SUM(
+                        CASE
+                            WHEN status = 'active'
+                             AND loginstatus = 'loggedin'
+                            THEN 1 ELSE 0
+                        END
+                    ) AS logged_in_devices,
+                    SUM(
+                        CASE
+                            WHEN otp_challenge_uid IS NOT NULL
+                            THEN 1 ELSE 0
+                        END
+                    ) AS pending_challenges
+                FROM zp_user_login_device
+                WHERE user_id = %s
+                """,
+                (target_id,),
+            )
+            device_summary = cursor.fetchone() or {}
+
+            sessions_revoked = _revoke_all_user_sessions_with_cursor(
+                cursor=cursor,
+                target_user_id=target_id,
+                now=now,
+                revoked_reason=(
+                    "logout_all_cross_user"
+                    if is_cross_user_action
+                    else "logout_all_self"
+                ),
+            )
+
+            # Keep trusted devices saved, but mark every active device logged out.
+            # Clear pending OTP challenges so a pre-logout OTP cannot complete later.
+            cursor.execute(
+                """
+                UPDATE zp_user_login_device
+                SET
+                    loginstatus = CASE
+                        WHEN status = 'active' THEN 'loggedout'
+                        ELSE loginstatus
+                    END,
+                    otp = NULL,
+                    otp_hash = NULL,
+                    otp_challenge_uid = NULL,
+                    otp_attempt_count = 0,
+                    otp_resend_count = 0,
+                    otp_last_sent_date = NULL,
+                    otpexpiretime = NULL,
+                    last_seen_date = %s
+                WHERE user_id = %s
+                """,
+                (now, target_id),
+            )
+
+            new_auth_version = _increment_auth_token_version_with_cursor(
+                cursor=cursor,
+                target_user_id=target_id,
+            )
+
+        connection.commit()
+
+    except DeviceAuthServiceError:
+        if connection:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        raise
+    except Exception as exc:
+        if connection:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        raise DeviceAuthServiceError(
+            "Unable to log out all devices",
+            "AUTH_LOGOUT_ALL_FAILED",
+            500,
+            {"error": str(exc)},
+        ) from exc
+    finally:
+        if connection:
+            connection.close()
+
+    return {
+        "message": (
+            "User has been logged out from all devices successfully"
+            if is_cross_user_action
+            else "You have been logged out from all devices successfully"
+        ),
+        "data": {
+            "authentication_status": "logged_out_all",
+            "action_scope": "cross_user" if is_cross_user_action else "self",
+            "target_user_id": target_id,
+            "sessions_revoked": sessions_revoked,
+            "devices_logged_out": _safe_int(
+                device_summary.get("logged_in_devices"),
+                0,
+            ),
+            "saved_devices_retained": _safe_int(
+                device_summary.get("saved_devices"),
+                0,
+            ),
+            "pending_otp_challenges_cancelled": _safe_int(
+                device_summary.get("pending_challenges"),
+                0,
+            ),
+            "auth_token_version": new_auth_version,
+        },
+    }
+
+
+def delete_all_saved_devices(
+    caller_user_id: Optional[int] = None,
+    caller_email: Optional[str] = None,
+    target_user_id: Optional[int] = None,
+    target_email: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Delete every saved/trusted device for a user.
+
+    Active sessions are revoked first and all existing access JWTs are
+    invalidated. zp_user_login is retained as audit/login history.
+    """
+    now = _utcnow()
+    connection = None
+
+    try:
+        connection = get_master_connection()
+        connection.begin()
+
+        with connection.cursor() as cursor:
+            caller, caller_group, target, is_cross_user_action = (
+                _authorize_device_management_action(
+                    cursor=cursor,
+                    caller_user_id=caller_user_id,
+                    caller_email=caller_email,
+                    target_user_id=target_user_id,
+                    target_email=target_email,
+                )
+            )
+
+            target_id = _safe_int(target.get("id"))
+
+            sessions_revoked = _revoke_all_user_sessions_with_cursor(
+                cursor=cursor,
+                target_user_id=target_id,
+                now=now,
+                revoked_reason=(
+                    "delete_all_devices_cross_user"
+                    if is_cross_user_action
+                    else "delete_all_devices_self"
+                ),
+            )
+
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS saved_devices
+                FROM zp_user_login_device
+                WHERE user_id = %s
+                """,
+                (target_id,),
+            )
+            saved_devices = _safe_int(
+                (cursor.fetchone() or {}).get("saved_devices"),
+                0,
+            )
+
+            cursor.execute(
+                """
+                DELETE FROM zp_user_login_device
+                WHERE user_id = %s
+                """,
+                (target_id,),
+            )
+            devices_deleted = max(_safe_int(cursor.rowcount), 0)
+
+            new_auth_version = _increment_auth_token_version_with_cursor(
+                cursor=cursor,
+                target_user_id=target_id,
+            )
+
+        connection.commit()
+
+    except DeviceAuthServiceError:
+        if connection:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        raise
+    except Exception as exc:
+        if connection:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        raise DeviceAuthServiceError(
+            "Unable to delete saved devices",
+            "AUTH_DELETE_ALL_DEVICES_FAILED",
+            500,
+            {"error": str(exc)},
+        ) from exc
+    finally:
+        if connection:
+            connection.close()
+
+    return {
+        "message": (
+            "All saved devices for the user have been deleted successfully"
+            if is_cross_user_action
+            else "All your saved devices have been deleted successfully"
+        ),
+        "data": {
+            "authentication_status": "devices_deleted",
+            "action_scope": "cross_user" if is_cross_user_action else "self",
+            "target_user_id": target_id,
+            "sessions_revoked": sessions_revoked,
+            "saved_devices_found": saved_devices,
+            "saved_devices_deleted": devices_deleted,
+            "auth_token_version": new_auth_version,
+        },
+    }
 
 def _build_password_reset_link(user_id: int, token: str) -> str:
     template = _safe_str(
