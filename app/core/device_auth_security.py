@@ -126,6 +126,7 @@ def issue_device_access_token(
     user_id: int,
     group_code: str,
     login_point: int,
+    auth_version: int = 1,
 ) -> Dict[str, Any]:
     """
     Keep the existing LogiKlu mobile-user JWT contract for compatibility with
@@ -137,4 +138,5 @@ def issue_device_access_token(
         user_id=user_id,
         group_code=group_code,
         login_point=login_point,
+        auth_version=auth_version,
     )

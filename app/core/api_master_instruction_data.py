@@ -1,7 +1,6 @@
 # LogiKlu API Master Instruction data.
-# Updated with application login/web-session handoff, trusted-device authentication,
-# refresh-session lifecycle, password reset, and Python mail-service documentation.
-# This file updates Master Instruction only; api_instruction_data.py is intentionally unchanged.
+# Device management does not enforce application role permission in FastAPI.
+# Cross-user permission is decided by the calling application's logged-in session.
 
 API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
  'subtitle': 'Internal developer guide for LogiKlu API, including OAuth/JWT client APIs, application login and '
@@ -393,7 +392,29 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
            {'title': 'Application environment loading',
             'description': 'app/main.py should load the project .env before importing modules that read environment '
                            'values. Using load_dotenv with override=False lets local development load .env while '
-                           'preserving values already injected by Docker or the server environment.'}],
+                           'preserving values already injected by Docker or the server environment.'},
+           {'title': 'Immediate logout-all access-token invalidation',
+            'description': 'The device-management endpoints themselves use X-APP-PASSWORD rather than a Bearer token. '
+                           'They still increment zp_users.auth_token_version for the target user, which invalidates '
+                           'all previously issued LogiKlu user/device access JWTs immediately.'},
+           {'title': 'Logout-all keeps trusted devices',
+            'description': '/device/logout-all revokes all sessions and marks active zp_user_login_device rows '
+                           'loggedout but retains the saved/trusted device records and their deviceexpiredate. A later '
+                           'username/password login on the same still-trusted device can skip OTP.'},
+           {'title': 'Delete-all removes device trust',
+            'description': '/device/delete-all revokes all target-user sessions and deletes all zp_user_login_device '
+                           "rows, including the caller's current saved device when used for self. The next device "
+                           'login is therefore treated as a new device and requires OTP.'},
+           {'title': 'Device management caller and target identifiers',
+            'description': '/device/logout-all and /device/delete-all accept the logged-in caller by either user_id or '
+                           'email. For Super Admin/developer cross-user actions, the target may likewise be supplied '
+                           'by target_user_id or target_email. When both ID and email are provided for the same party, '
+                           'both must resolve to the same zp_users row.'},
+           {'title': 'Device management authorization responsibility',
+            'description': '/device/logout-all and /device/delete-all require X-APP-PASSWORD but do not enforce user '
+                           'role or Super Admin permission in FastAPI. The calling LogiKlu application decides from '
+                           'its authenticated session whether the current user can act only on self or on another '
+                           'user.'}],
  'sections': [{'id': 'authentication',
                'title': 'OAuth / JWT Authentication',
                'description': 'Generate a short-lived access token using /oauth/token. Then call protected APIs using '
@@ -850,6 +871,148 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                                             'schema_version': 'logiklu_device_auth.v1',
                                                             'authentication_status': 'logged_out'},
                                                    'data': {'authentication_status': 'logged_out'}}},
+                             {'id': 'device-logout-all',
+                              'title': 'Logout From All Devices',
+                              'method': 'POST',
+                              'path': '/device/logout-all',
+                              'purpose': 'Immediately log a user out from all registered devices. A logged-in user can '
+                                         'perform the action for self. A current superadmin/developer can perform it '
+                                         'for another user by supplying target_user_id. All open zp_user_login '
+                                         'sessions are revoked, all active saved devices are marked loggedout, pending '
+                                         'OTP challenges are cancelled, and zp_users.auth_token_version is incremented '
+                                         'so previously issued access JWTs are invalid.',
+                              'auth_type': 'app_password',
+                              'auth_note': 'No Authorization/Bearer token is required. Send X-APP-PASSWORD matching '
+                                           'LOGIKLU_APP_PASSWORD. Identify caller using user_id or email. For a '
+                                           'cross-user action, identify the target using target_user_id or '
+                                           'target_email. The API does not validate Super Admin permission; the '
+                                           'calling LogiKlu application decides that from its logged-in session.',
+                              'request_type': 'JSON Body',
+                              'parameters': [{'name': 'user_id',
+                                              'type': 'integer',
+                                              'required': 'Conditional',
+                                              'example': '6717',
+                                              'description': "Logged-in caller's user ID. Optional when email is "
+                                                             'supplied.'},
+                                             {'name': 'email',
+                                              'type': 'string',
+                                              'required': 'Conditional',
+                                              'example': 'user@example.com',
+                                              'description': "Logged-in caller's email address. Optional when user_id "
+                                                             'is supplied.'},
+                                             {'name': 'target_user_id',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '8201',
+                                              'description': "Target user's ID for a cross-user Super Admin/developer "
+                                                             'action. Optional when target_email is supplied.'},
+                                             {'name': 'target_email',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'target@example.com',
+                                              'description': "Target user's email for a cross-user Super "
+                                                             'Admin/developer action. Optional when target_user_id is '
+                                                             'supplied.'}],
+                              'body': {'email': 'user@example.com'},
+                              'examples': [{'title': 'Logout self using email',
+                                            'description': "Send X-APP-PASSWORD and the logged-in user's email.",
+                                            'path': '/device/logout-all',
+                                            'body': {'email': 'user@example.com'}},
+                                           {'title': 'Logout self using user ID',
+                                            'description': 'user_id is also supported.',
+                                            'path': '/device/logout-all',
+                                            'body': {'user_id': 6717}},
+                                           {'title': 'Cross-user logout another user by email',
+                                            'description': 'The calling LogiKlu application must allow this cross-user '
+                                                           'action from its authenticated session.',
+                                            'path': '/device/logout-all',
+                                            'body': {'email': 'admin@example.com',
+                                                     'target_email': 'user@example.com'}}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'You have been logged out from all devices successfully',
+                                                   'meta': {'generated_at': '2026-09-10T12:00:00+00:00',
+                                                            'mode': 'device_auth',
+                                                            'environment': 'development',
+                                                            'schema_version': 'logiklu_device_auth.v1',
+                                                            'authentication_status': 'logged_out_all'},
+                                                   'data': {'authentication_status': 'logged_out_all',
+                                                            'action_scope': 'self',
+                                                            'target_user_id': 6717,
+                                                            'sessions_revoked': 3,
+                                                            'devices_logged_out': 2,
+                                                            'saved_devices_retained': 2,
+                                                            'pending_otp_challenges_cancelled': 0,
+                                                            'auth_token_version': 2}}},
+                             {'id': 'device-delete-all',
+                              'title': 'Delete All Saved Devices',
+                              'method': 'POST',
+                              'path': '/device/delete-all',
+                              'purpose': 'Delete every saved/trusted device for a user. A logged-in user can delete '
+                                         'their own saved devices. A current superadmin/developer can target another '
+                                         'user. Active login sessions are revoked first, existing access JWTs are '
+                                         'invalidated through auth_token_version, then all zp_user_login_device rows '
+                                         'for the target are deleted. zp_user_login history is retained for audit.',
+                              'auth_type': 'app_password',
+                              'auth_note': 'No Authorization/Bearer token is required. Send X-APP-PASSWORD matching '
+                                           'LOGIKLU_APP_PASSWORD. Identify caller using user_id or email. For a '
+                                           'cross-user action, identify the target using target_user_id or '
+                                           'target_email. The API does not validate Super Admin permission; the '
+                                           'calling LogiKlu application decides that from its logged-in session.',
+                              'request_type': 'JSON Body',
+                              'parameters': [{'name': 'user_id',
+                                              'type': 'integer',
+                                              'required': 'Conditional',
+                                              'example': '6717',
+                                              'description': "Logged-in caller's user ID. Optional when email is "
+                                                             'supplied.'},
+                                             {'name': 'email',
+                                              'type': 'string',
+                                              'required': 'Conditional',
+                                              'example': 'user@example.com',
+                                              'description': "Logged-in caller's email address. Optional when user_id "
+                                                             'is supplied.'},
+                                             {'name': 'target_user_id',
+                                              'type': 'integer',
+                                              'required': 'No',
+                                              'example': '8201',
+                                              'description': "Target user's ID for a cross-user Super Admin/developer "
+                                                             'action. Optional when target_email is supplied.'},
+                                             {'name': 'target_email',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'target@example.com',
+                                              'description': "Target user's email for a cross-user Super "
+                                                             'Admin/developer action. Optional when target_user_id is '
+                                                             'supplied.'}],
+                              'body': {'email': 'user@example.com'},
+                              'examples': [{'title': 'Delete own saved devices using email',
+                                            'description': "Send X-APP-PASSWORD and the logged-in user's email.",
+                                            'path': '/device/delete-all',
+                                            'body': {'email': 'user@example.com'}},
+                                           {'title': 'Delete own saved devices using user ID',
+                                            'description': 'user_id is also supported.',
+                                            'path': '/device/delete-all',
+                                            'body': {'user_id': 6717}},
+                                           {'title': "Cross-user delete another user's devices by email",
+                                            'description': 'The calling LogiKlu application must allow this cross-user '
+                                                           'action from its authenticated session.',
+                                            'path': '/device/delete-all',
+                                            'body': {'email': 'admin@example.com',
+                                                     'target_email': 'user@example.com'}}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'All your saved devices have been deleted successfully',
+                                                   'meta': {'generated_at': '2026-09-10T12:00:00+00:00',
+                                                            'mode': 'device_auth',
+                                                            'environment': 'development',
+                                                            'schema_version': 'logiklu_device_auth.v1',
+                                                            'authentication_status': 'devices_deleted'},
+                                                   'data': {'authentication_status': 'devices_deleted',
+                                                            'action_scope': 'self',
+                                                            'target_user_id': 6717,
+                                                            'sessions_revoked': 3,
+                                                            'saved_devices_found': 2,
+                                                            'saved_devices_deleted': 2,
+                                                            'auth_token_version': 3}}},
                              {'id': 'device-forgot-password',
                               'title': 'Forgot Password',
                               'method': 'POST',
@@ -13743,7 +13906,43 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
             {'code': 'MAIL_SEND_PROCESS_FAILED',
              'http_status': 500,
              'meaning': 'An unexpected error occurred in /mail/emailsend.',
-             'fix': 'Inspect the API server logs for the underlying exception.'}],
+             'fix': 'Inspect the API server logs for the underlying exception.'},
+            {'code': 'AUTH_TARGET_USER_NOT_FOUND',
+             'http_status': 404,
+             'meaning': 'The requested target_user_id does not exist.',
+             'fix': 'Use a valid LogiKlu user ID.'},
+            {'code': 'AUTH_CALLER_INVALID',
+             'http_status': 401,
+             'meaning': 'The authenticated caller does not contain a valid LogiKlu user ID.',
+             'fix': 'Sign in again and use a current LogiKlu user/device access token.'},
+            {'code': 'AUTH_LOGOUT_ALL_FAILED',
+             'http_status': 500,
+             'meaning': 'The API could not revoke all sessions/devices for the target user.',
+             'fix': 'Check master-database connectivity and zp_user_login/zp_user_login_device schema.'},
+            {'code': 'AUTH_DELETE_ALL_DEVICES_FAILED',
+             'http_status': 500,
+             'meaning': 'The API could not revoke sessions and delete all saved devices.',
+             'fix': 'Check master-database connectivity and device/session table permissions.'},
+            {'code': 'AUTH_APP_PASSWORD_CONFIG_MISSING',
+             'http_status': 500,
+             'meaning': 'LOGIKLU_APP_PASSWORD is not configured on the API server.',
+             'fix': 'Set LOGIKLU_APP_PASSWORD in the environment and restart/recreate the API service.'},
+            {'code': 'AUTH_APP_PASSWORD_REQUIRED',
+             'http_status': 401,
+             'meaning': 'X-APP-PASSWORD was not supplied to a protected device-management endpoint.',
+             'fix': 'Send X-APP-PASSWORD with /device/logout-all or /device/delete-all.'},
+            {'code': 'AUTH_APP_PASSWORD_INVALID',
+             'http_status': 401,
+             'meaning': 'X-APP-PASSWORD does not match LOGIKLU_APP_PASSWORD.',
+             'fix': 'Use the configured application password.'},
+            {'code': 'AUTH_CALLER_IDENTIFIER_REQUIRED',
+             'http_status': 422,
+             'meaning': 'Neither user_id nor email was supplied for the logged-in caller.',
+             'fix': 'Send either user_id or email.'},
+            {'code': 'AUTH_CALLER_NOT_FOUND',
+             'http_status': 404,
+             'meaning': 'The supplied caller user_id/email did not resolve to an active LogiKlu user.',
+             'fix': "Use the logged-in user's correct user_id or registered email address."}],
  'logging': {'title': 'API Request Logging',
              'description': 'LogiKlu stores API request logs internally for audit, troubleshooting, and support.',
              'logged_fields': ['oauth_client_id',
