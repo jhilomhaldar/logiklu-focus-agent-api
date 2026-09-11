@@ -32,7 +32,7 @@ from app.services.device_auth_service import (
 )
 
 
-router = APIRouter()
+router = APIRouter(prefix="/auth/device")
 
 
 def _meta(authentication_status: str = ""):
@@ -118,7 +118,7 @@ def _unhandled_error(message: str, error_code: str, exc: Exception) -> JSONRespo
     )
 
 
-@router.post("/device/login")
+@router.post("/login")
 def login(payload: DeviceLoginRequest, request: Request):
     try:
         result = device_login(
@@ -152,7 +152,7 @@ def login(payload: DeviceLoginRequest, request: Request):
         )
 
 
-@router.post("/device/otp/verify")
+@router.post("/otp/verify")
 def otp_verify(payload: DeviceOtpVerifyRequest, request: Request):
     try:
         result = verify_device_otp(
@@ -178,7 +178,7 @@ def otp_verify(payload: DeviceOtpVerifyRequest, request: Request):
         )
 
 
-@router.post("/device/otp/resend")
+@router.post("/otp/resend")
 def otp_resend(payload: DeviceOtpResendRequest, request: Request):
     try:
         result = resend_device_otp(
@@ -203,7 +203,7 @@ def otp_resend(payload: DeviceOtpResendRequest, request: Request):
         )
 
 
-@router.post("/device/session/restore")
+@router.post("/session/restore")
 def session_restore(payload: DeviceSessionRestoreRequest, request: Request):
     try:
         result = restore_device_session(
@@ -230,7 +230,7 @@ def session_restore(payload: DeviceSessionRestoreRequest, request: Request):
         )
 
 
-@router.post("/device/logout")
+@router.post("/logout")
 def logout(payload: DeviceLogoutRequest):
     try:
         result = logout_device_session(
@@ -255,7 +255,7 @@ def logout(payload: DeviceLogoutRequest):
 
 
 
-@router.post("/device/logout-all")
+@router.post("/logout-all")
 def logout_all(
     payload: DeviceUserManagementRequest,
     x_app_password: str = Header(
@@ -300,7 +300,7 @@ def logout_all(
         )
 
 
-@router.post("/device/delete-all")
+@router.post("/delete-all")
 def delete_all_devices(
     payload: DeviceUserManagementRequest,
     x_app_password: str = Header(
@@ -345,7 +345,7 @@ def delete_all_devices(
         )
 
 
-@router.post("/device/forgot-password")
+@router.post("/forgot-password")
 def forgot_password(payload: DeviceForgotPasswordRequest):
     try:
         result = forgot_device_password(payload.username)
