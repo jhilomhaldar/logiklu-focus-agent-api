@@ -294,24 +294,24 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
            {'title': 'Focus Report schema version',
             'description': 'GET and POST /focus/report use schema_version logiklu_focus_agent_report.v1.'},
            {'title': 'Application authentication is separate from OAuth client authentication',
-            'description': '/auth/login and /device/* authenticate LogiKlu users. /oauth/token authenticates API '
+            'description': '/auth/login and /auth/auth/device/* authenticate LogiKlu users. /oauth/token authenticates API '
                            'clients. These flows are separate and their tokens must not be confused.'},
            {'title': 'Existing application login remains unchanged',
             'description': 'POST /auth/login remains available as the existing direct username/password user-login '
-                           'endpoint. The trusted-device protocol is implemented separately under /device/*.'},
+                           'endpoint. The trusted-device protocol is implemented separately under /auth/auth/device/*.'},
            {'title': 'Trusted-device endpoint namespace',
-            'description': 'The generalized trusted-device authentication protocol uses /device/login, '
-                           '/device/otp/verify, /device/otp/resend, /device/session/restore, /device/logout, and '
-                           '/device/forgot-password. The protocol is intentionally platform-neutral and may be used by '
+            'description': 'The generalized trusted-device authentication protocol uses /auth/device/login, '
+                           '/auth/device/otp/verify, /auth/device/otp/resend, /auth/device/session/restore, /auth/device/logout, and '
+                           '/auth/device/forgot-password. The protocol is intentionally platform-neutral and may be used by '
                            'mobile, tablet, web, or desktop clients.'},
            {'title': 'Device client type',
-            'description': '/device/login accepts client_type such as mobile, tablet, or web. Device identity is the '
+            'description': '/auth/device/login accepts client_type such as mobile, tablet, or web. Device identity is the '
                            'combination of user, client_type/device_source, and the app/browser generated device_id.'},
            {'title': 'Device trust lifetime',
             'description': 'A successfully OTP-verified device is trusted for 90 days. After deviceexpiredate passes, '
                            'the user must authenticate with username/password and complete OTP verification again.'},
            {'title': 'Device logout preserves trust',
-            'description': '/device/logout revokes the current API login session and marks the device loggedout, but '
+            'description': '/auth/device/logout revokes the current API login session and marks the device loggedout, but '
                            'it does not remove the active trusted-device record or reset its 90-day expiry. A later '
                            'username/password login on the same unexpired trusted device skips OTP.'},
            {'title': 'Device reinstall behavior',
@@ -346,14 +346,14 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                            "their expiry is capped by the device's 90-day trusted-until date."},
            {'title': 'Refresh token storage and rotation',
             'description': 'The raw refresh token is returned to the client but only its SHA-256 hash is stored in '
-                           'zp_user_login.refresh_token_hash. /device/session/restore rotates the refresh token on '
+                           'zp_user_login.refresh_token_hash. /auth/device/session/restore rotates the refresh token on '
                            'each successful restore, so the previous refresh token becomes invalid.'},
            {'title': 'One active device session per user/device',
             'description': 'A manual login on the same user/client_type/device_id revokes the previous active API '
                            'session for that same device with revoked_reason=relogin before creating the replacement '
                            'session.'},
            {'title': 'Device access token and web session handoff',
-            'description': 'The access JWT returned by /device/login, /device/otp/verify, and /device/session/restore '
+            'description': 'The access JWT returned by /auth/device/login, /auth/device/otp/verify, and /auth/device/session/restore '
                            'uses the LogiKlu mobile-user token contract and can be supplied as Authorization: Bearer '
                            '<token> to /auth/web-session.'},
            {'title': 'Web session handoff table',
@@ -366,7 +366,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                            'the resolved LogiKlu landing page. The FastAPI service does not directly populate PHP '
                            '$_SESSION.'},
            {'title': 'Forgot-password compatibility',
-            'description': '/device/forgot-password reuses the existing LogiKlu reset-password mechanism. It updates '
+            'description': '/auth/device/forgot-password reuses the existing LogiKlu reset-password mechanism. It updates '
                            'zp_users.PasswordToken, PasswordTokenDate, and PasswordTokenUse, sends the existing '
                            'reset-link flow, and keeps the reset validity at 48 hours.'},
            {'title': 'Mail endpoint authentication',
@@ -398,20 +398,20 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                            'They still increment zp_users.auth_token_version for the target user, which invalidates '
                            'all previously issued LogiKlu user/device access JWTs immediately.'},
            {'title': 'Logout-all keeps trusted devices',
-            'description': '/device/logout-all revokes all sessions and marks active zp_user_login_device rows '
+            'description': '/auth/device/logout-all revokes all sessions and marks active zp_user_login_device rows '
                            'loggedout but retains the saved/trusted device records and their deviceexpiredate. A later '
                            'username/password login on the same still-trusted device can skip OTP.'},
            {'title': 'Delete-all removes device trust',
-            'description': '/device/delete-all revokes all target-user sessions and deletes all zp_user_login_device '
+            'description': '/auth/device/delete-all revokes all target-user sessions and deletes all zp_user_login_device '
                            "rows, including the caller's current saved device when used for self. The next device "
                            'login is therefore treated as a new device and requires OTP.'},
            {'title': 'Device management caller and target identifiers',
-            'description': '/device/logout-all and /device/delete-all accept the logged-in caller by either user_id or '
+            'description': '/auth/device/logout-all and /auth/device/delete-all accept the logged-in caller by either user_id or '
                            'email. For Super Admin/developer cross-user actions, the target may likewise be supplied '
                            'by target_user_id or target_email. When both ID and email are provided for the same party, '
                            'both must resolve to the same zp_users row.'},
            {'title': 'Device management authorization responsibility',
-            'description': '/device/logout-all and /device/delete-all require X-APP-PASSWORD but do not enforce user '
+            'description': '/auth/device/logout-all and /auth/device/delete-all require X-APP-PASSWORD but do not enforce user '
                            'role or Super Admin permission in FastAPI. The calling LogiKlu application decides from '
                            'its authenticated session whether the current user can act only on self or on another '
                            'user.'}],
@@ -522,7 +522,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                          'token.',
                               'auth_type': 'bearer',
                               'auth_note': 'Use the user/device Bearer access token returned by /auth/login, '
-                                           '/device/login, /device/otp/verify, or /device/session/restore. Do not use '
+                                           '/auth/device/login, /auth/device/otp/verify, or /auth/device/session/restore. Do not use '
                                            'an OAuth /oauth/token client token.',
                               'request_type': 'JSON Body',
                               'parameters': [{'name': 'domain_id',
@@ -613,7 +613,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                              {'id': 'device-login',
                               'title': 'Trusted Device Login',
                               'method': 'POST',
-                              'path': '/device/login',
+                              'path': '/auth/device/login',
                               'purpose': "Authenticate username/email and password, enforce the user's maximum-device "
                                          'limit, then either log in directly when the device is still trusted or '
                                          'generate/send an OTP for a new/expired device.',
@@ -679,7 +679,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                               'examples': [{'title': 'New-device login',
                                             'description': 'For a new or expired device this request returns '
                                                            'otp_required and sends the OTP email.',
-                                            'path': '/device/login',
+                                            'path': '/auth/device/login',
                                             'body': {'username': 'user@example.com',
                                                      'password': 'YOUR_PASSWORD',
                                                      'client_type': 'mobile',
@@ -704,7 +704,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                              {'id': 'device-otp-verify',
                               'title': 'Verify Device OTP',
                               'method': 'POST',
-                              'path': '/device/otp/verify',
+                              'path': '/auth/device/otp/verify',
                               'purpose': 'Verify the pending device challenge and OTP. On success, trust the device '
                                          'for 90 days, create a zp_user_login session, and return access and refresh '
                                          'credentials.',
@@ -714,7 +714,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                               'type': 'string',
                                               'required': 'Yes',
                                               'example': 'LKOTP-EXAMPLE-CHALLENGE',
-                                              'description': 'OTP challenge returned by /device/login.'},
+                                              'description': 'OTP challenge returned by /auth/device/login.'},
                                              {'name': 'otp',
                                               'type': 'string',
                                               'required': 'Yes',
@@ -730,7 +730,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                        'device_id': 'LKDEV-EXAMPLE-12345678'},
                               'examples': [{'title': 'Verify OTP and trust device',
                                             'description': 'Complete the pending login challenge.',
-                                            'path': '/device/otp/verify',
+                                            'path': '/auth/device/otp/verify',
                                             'body': {'challenge_id': 'LKOTP-EXAMPLE-CHALLENGE',
                                                      'otp': '123456',
                                                      'device_id': 'LKDEV-EXAMPLE-12345678'}}],
@@ -756,7 +756,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                              {'id': 'device-otp-resend',
                               'title': 'Resend Device OTP',
                               'method': 'POST',
-                              'path': '/device/otp/resend',
+                              'path': '/auth/device/otp/resend',
                               'purpose': 'Generate and email a replacement OTP for an existing pending challenge. The '
                                          'same challenge ID is retained, the previous OTP is invalidated, the '
                                          'verification-attempt count is reset, and the five-minute OTP expiry '
@@ -791,7 +791,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                              {'id': 'device-session-restore',
                               'title': 'Restore Device Session',
                               'method': 'POST',
-                              'path': '/device/session/restore',
+                              'path': '/auth/device/session/restore',
                               'purpose': 'Automatically restore a previously authenticated device session. Validates '
                                          'the refresh token, active user, matching device, active trusted-device '
                                          'state, session expiry, and 90-day trust expiry; then rotates the refresh '
@@ -845,7 +845,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                              {'id': 'device-logout',
                               'title': 'Logout Device Session',
                               'method': 'POST',
-                              'path': '/device/logout',
+                              'path': '/auth/device/logout',
                               'purpose': 'Revoke the current device refresh session and update login/logout history. '
                                          'Device trust remains active until deviceexpiredate, allowing a later '
                                          'password-authenticated login on the same trusted device without OTP.',
@@ -874,7 +874,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                              {'id': 'device-logout-all',
                               'title': 'Logout From All Devices',
                               'method': 'POST',
-                              'path': '/device/logout-all',
+                              'path': '/auth/device/logout-all',
                               'purpose': 'Immediately log a user out from all registered devices. A logged-in user can '
                                          'perform the action for self. A current superadmin/developer can perform it '
                                          'for another user by supplying target_user_id. All open zp_user_login '
@@ -916,16 +916,16 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                               'body': {'email': 'user@example.com'},
                               'examples': [{'title': 'Logout self using email',
                                             'description': "Send X-APP-PASSWORD and the logged-in user's email.",
-                                            'path': '/device/logout-all',
+                                            'path': '/auth/device/logout-all',
                                             'body': {'email': 'user@example.com'}},
                                            {'title': 'Logout self using user ID',
                                             'description': 'user_id is also supported.',
-                                            'path': '/device/logout-all',
+                                            'path': '/auth/device/logout-all',
                                             'body': {'user_id': 6717}},
                                            {'title': 'Cross-user logout another user by email',
                                             'description': 'The calling LogiKlu application must allow this cross-user '
                                                            'action from its authenticated session.',
-                                            'path': '/device/logout-all',
+                                            'path': '/auth/device/logout-all',
                                             'body': {'email': 'admin@example.com',
                                                      'target_email': 'user@example.com'}}],
                               'response_example': {'status': 'success',
@@ -946,7 +946,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                              {'id': 'device-delete-all',
                               'title': 'Delete All Saved Devices',
                               'method': 'POST',
-                              'path': '/device/delete-all',
+                              'path': '/auth/device/delete-all',
                               'purpose': 'Delete every saved/trusted device for a user. A logged-in user can delete '
                                          'their own saved devices. A current superadmin/developer can target another '
                                          'user. Active login sessions are revoked first, existing access JWTs are '
@@ -987,16 +987,16 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                               'body': {'email': 'user@example.com'},
                               'examples': [{'title': 'Delete own saved devices using email',
                                             'description': "Send X-APP-PASSWORD and the logged-in user's email.",
-                                            'path': '/device/delete-all',
+                                            'path': '/auth/device/delete-all',
                                             'body': {'email': 'user@example.com'}},
                                            {'title': 'Delete own saved devices using user ID',
                                             'description': 'user_id is also supported.',
-                                            'path': '/device/delete-all',
+                                            'path': '/auth/device/delete-all',
                                             'body': {'user_id': 6717}},
                                            {'title': "Cross-user delete another user's devices by email",
                                             'description': 'The calling LogiKlu application must allow this cross-user '
                                                            'action from its authenticated session.',
-                                            'path': '/device/delete-all',
+                                            'path': '/auth/device/delete-all',
                                             'body': {'email': 'admin@example.com',
                                                      'target_email': 'user@example.com'}}],
                               'response_example': {'status': 'success',
@@ -1016,7 +1016,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                              {'id': 'device-forgot-password',
                               'title': 'Forgot Password',
                               'method': 'POST',
-                              'path': '/device/forgot-password',
+                              'path': '/auth/device/forgot-password',
                               'purpose': 'Reuse the existing LogiKlu password-reset process. Finds the user by '
                                          'username/email, creates a PasswordToken, resets PasswordTokenUse, stores the '
                                          'reset expiry date, and sends the existing LogiKlu reset-password link by '
@@ -13738,10 +13738,10 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
             {'code': 'AUTH_USERNAME_REQUIRED',
              'http_status': 422,
              'meaning': 'Username/email is required by the device authentication request.',
-             'fix': 'Send username with /device/login or /device/forgot-password.'},
+             'fix': 'Send username with /auth/device/login or /auth/device/forgot-password.'},
             {'code': 'AUTH_PASSWORD_REQUIRED',
              'http_status': 422,
-             'meaning': 'Password is required for /device/login.',
+             'meaning': 'Password is required for /auth/device/login.',
              'fix': "Send the user's current LogiKlu password."},
             {'code': 'AUTH_DEVICE_ID_REQUIRED',
              'http_status': 422,
@@ -13798,7 +13798,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
             {'code': 'AUTH_OTP_RESEND_LIMIT_EXCEEDED',
              'http_status': 429,
              'meaning': 'The maximum OTP resend count for the challenge was reached.',
-             'fix': 'Restart /device/login to create a new challenge.'},
+             'fix': 'Restart /auth/device/login to create a new challenge.'},
             {'code': 'AUTH_SESSION_INVALID',
              'http_status': 401,
              'meaning': 'The refresh token is invalid or has already been rotated.',
@@ -13930,7 +13930,7 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
             {'code': 'AUTH_APP_PASSWORD_REQUIRED',
              'http_status': 401,
              'meaning': 'X-APP-PASSWORD was not supplied to a protected device-management endpoint.',
-             'fix': 'Send X-APP-PASSWORD with /device/logout-all or /device/delete-all.'},
+             'fix': 'Send X-APP-PASSWORD with /auth/device/logout-all or /auth/device/delete-all.'},
             {'code': 'AUTH_APP_PASSWORD_INVALID',
              'http_status': 401,
              'meaning': 'X-APP-PASSWORD does not match LOGIKLU_APP_PASSWORD.',
