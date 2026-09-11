@@ -796,7 +796,7 @@ def create_web_session_handoff(
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO lk_mobile_web_handoff
+                INSERT INTO logiklu_mobile_web_handoff
                 (
                     token_hash,
                     api_environment,
@@ -877,7 +877,7 @@ def consume_web_session_handoff(token: str) -> Dict[str, Any]:
             cursor.execute(
                 """
                 SELECT *
-                FROM lk_mobile_web_handoff
+                FROM logiklu_mobile_web_handoff
                 WHERE token_hash = %s
                   AND api_environment = %s
                 LIMIT 1
@@ -911,7 +911,7 @@ def consume_web_session_handoff(token: str) -> Dict[str, Any]:
 
             cursor.execute(
                 """
-                UPDATE lk_mobile_web_handoff
+                UPDATE logiklu_mobile_web_handoff
                 SET used_date = %s
                 WHERE handoff_id = %s
                   AND used_date IS NULL
