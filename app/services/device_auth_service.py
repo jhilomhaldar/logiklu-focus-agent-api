@@ -637,6 +637,258 @@ def _upsert_pending_otp_device(
     return _safe_int(cursor.lastrowid)
 
 
+
+def device_username_check(
+    username: str,
+    client_type: str,
+    device_id: str,
+    device_name: str,
+    device_os: str,
+    os_version: str,
+    app_version: str,
+    current_timezone: str,
+    client_ip: str,
+) -> Dict[str, Any]:
+    """
+    First step of the device-login UI.
+
+    1. Validate Username / Email.
+    2. If this exact saved device is active, unexpired, and already trusted,
+       authenticate immediately without password and without OTP whether its
+       current loginstatus is loggedin or loggedout.
+    3. Otherwise return password_required so the UI shows the password field
+       and then calls POST /auth/device/login.
+    """
+    username = _safe_str(username)
+    device_id = _safe_str(device_id)
+    current_timezone = _safe_str(current_timezone) or "UTC"
+
+    if not username:
+        raise DeviceAuthServiceError(
+            "Username / Email is required",
+            "AUTH_USERNAME_REQUIRED",
+            422,
+        )
+
+    if not device_id:
+        raise DeviceAuthServiceError(
+            "Device ID is required",
+            "AUTH_DEVICE_ID_REQUIRED",
+            422,
+        )
+
+    try:
+        client_type = normalize_client_type(client_type)
+    except DeviceAuthSecurityError as exc:
+        raise DeviceAuthServiceError(
+            str(exc),
+            "AUTH_CLIENT_TYPE_INVALID",
+            422,
+        ) from exc
+
+    user = _fetch_user_by_identifier(username)
+
+    if not user:
+        raise DeviceAuthServiceError(
+            "Username / Email does not exist",
+            "AUTH_USER_NOT_FOUND",
+            404,
+        )
+
+    if not _is_active_user_status(user.get("status")):
+        raise DeviceAuthServiceError(
+            "This user is not active. Please contact Administrator",
+            "AUTH_USER_INACTIVE",
+            403,
+        )
+
+    user_id = _safe_int(user.get("id"))
+    group = _fetch_access_group(user_id)
+
+    if not group:
+        raise DeviceAuthServiceError(
+            "No active access group is assigned to this user",
+            "AUTH_ACCESS_GROUP_MISSING",
+            403,
+        )
+
+    now = _utcnow()
+    connection = None
+    authenticated_session: Optional[Dict[str, Any]] = None
+    device_trusted_until: Optional[datetime] = None
+
+    device_recognized = False
+    device_state = "new_device"
+
+    try:
+        connection = get_master_connection()
+        connection.begin()
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM zp_users WHERE id = %s LIMIT 1 FOR UPDATE",
+                (user_id,),
+            )
+            locked_user = cursor.fetchone()
+
+            if not locked_user or not _is_active_user_status(
+                locked_user.get("status")
+            ):
+                raise DeviceAuthServiceError(
+                    "This user is not active. Please contact Administrator",
+                    "AUTH_USER_INACTIVE",
+                    403,
+                )
+
+            device = _fetch_device_for_update(
+                cursor=cursor,
+                user_id=user_id,
+                client_type=client_type,
+                device_id=device_id,
+            )
+
+            if device:
+                device_recognized = True
+
+                expires = _as_datetime(device.get("deviceexpiredate"))
+                status = _safe_str(device.get("status")).lower()
+                loginstatus = _safe_str(device.get("loginstatus")).lower()
+
+                if status != "active":
+                    device_state = "not_trusted"
+                elif expires is None or expires <= now:
+                    device_state = "trust_expired"
+                elif loginstatus == "loggedout":
+                    device_state = "trusted_logged_out"
+                elif loginstatus == "loggedin":
+                    device_state = "already_logged_in"
+                else:
+                    device_state = "not_trusted"
+
+                # Username-first passwordless login is allowed for any
+                # previously trusted, unexpired device. This includes both:
+                # - loggedout: user explicitly logged out earlier
+                # - loggedin:  app/session was lost/reopened while the device
+                #              is still trusted
+                #
+                # _create_session_with_cursor() safely revokes any previous
+                # active session for this SAME user/device before issuing the
+                # replacement access + refresh session.
+                if (
+                    status == "active"
+                    and loginstatus in {"loggedin", "loggedout"}
+                    and expires is not None
+                    and expires > now
+                ):
+                    _assert_device_slot_available(
+                        cursor=cursor,
+                        user=locked_user,
+                        now=now,
+                        exclude_device_row_id=_safe_int(device.get("id")),
+                    )
+
+                    device_trusted_until = expires
+
+                    authenticated_session = _create_session_with_cursor(
+                        cursor=cursor,
+                        user_id=user_id,
+                        client_type=client_type,
+                        device_id=device_id,
+                        client_ip=client_ip,
+                        app_version=app_version,
+                        current_timezone=current_timezone,
+                        device_trusted_until=device_trusted_until,
+                        now=now,
+                    )
+
+                    cursor.execute(
+                        """
+                        UPDATE zp_user_login_device
+                        SET
+                            loginstatus = 'loggedin',
+                            ip = %s,
+                            device_name = %s,
+                            device_os = %s,
+                            os_version = %s,
+                            app_version = %s,
+                            current_timezone = %s,
+                            last_seen_date = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            client_ip,
+                            _safe_str(device_name),
+                            _safe_str(device_os),
+                            _safe_str(os_version),
+                            _safe_str(app_version),
+                            current_timezone,
+                            now,
+                            _safe_int(device.get("id")),
+                        ),
+                    )
+
+        connection.commit()
+
+    except DeviceAuthServiceError:
+        if connection:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        raise
+    except Exception as exc:
+        if connection:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        raise DeviceAuthServiceError(
+            "Unable to verify username and device",
+            "AUTH_USERNAME_CHECK_FAILED",
+            500,
+            {"error": str(exc)},
+        ) from exc
+    finally:
+        if connection:
+            connection.close()
+
+    if authenticated_session is not None and device_trusted_until is not None:
+        response_data = _complete_authenticated_response(
+            user=user,
+            group=group,
+            session=authenticated_session,
+            current_timezone=current_timezone,
+            device_trusted_until=device_trusted_until,
+        )
+        response_data["login_method"] = "trusted_device"
+        response_data["password_required"] = False
+        response_data["device_recognized"] = True
+        response_data["previous_device_state"] = device_state
+
+        return {
+            "message": "Login successful",
+            "data": response_data,
+        }
+
+    login_username = (
+        _safe_str(user.get("username"))
+        or _safe_str(user.get("email"))
+        or username
+    )
+
+    return {
+        "message": "Username / Email verified. Please enter your password",
+        "data": {
+            "authentication_status": "password_required",
+            "next_step": "password",
+            "username_valid": True,
+            "username": login_username,
+            "password_required": True,
+            "device_recognized": device_recognized,
+            "device_state": device_state,
+        },
+    }
+
 def device_login(
     username: str,
     password: str,
