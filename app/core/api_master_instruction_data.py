@@ -1,6 +1,6 @@
 # LogiKlu API Master Instruction data.
-# Device management does not enforce application role permission in FastAPI.
-# Cross-user permission is decided by the calling application's logged-in session.
+# Includes internal OTP support-mailbox copy behavior.
+# Public Instruction data remains unchanged.
 
 API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
  'subtitle': 'Internal developer guide for LogiKlu API, including OAuth/JWT client APIs, application login and '
@@ -294,26 +294,28 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
            {'title': 'Focus Report schema version',
             'description': 'GET and POST /focus/report use schema_version logiklu_focus_agent_report.v1.'},
            {'title': 'Application authentication is separate from OAuth client authentication',
-            'description': '/auth/login and /auth/auth/device/* authenticate LogiKlu users. /oauth/token authenticates API '
-                           'clients. These flows are separate and their tokens must not be confused.'},
+            'description': '/auth/login and /auth/auth/device/* authenticate LogiKlu users. /oauth/token authenticates '
+                           'API clients. These flows are separate and their tokens must not be confused.'},
            {'title': 'Existing application login remains unchanged',
             'description': 'POST /auth/login remains available as the existing direct username/password user-login '
-                           'endpoint. The trusted-device protocol is implemented separately under /auth/auth/device/*.'},
+                           'endpoint. The trusted-device protocol is implemented separately under '
+                           '/auth/auth/device/*.'},
            {'title': 'Trusted-device endpoint namespace',
             'description': 'The generalized trusted-device authentication protocol uses /auth/device/login, '
-                           '/auth/device/otp/verify, /auth/device/otp/resend, /auth/device/session/restore, /auth/device/logout, and '
-                           '/auth/device/forgot-password. The protocol is intentionally platform-neutral and may be used by '
-                           'mobile, tablet, web, or desktop clients.'},
+                           '/auth/device/otp/verify, /auth/device/otp/resend, /auth/device/session/restore, '
+                           '/auth/device/logout, and /auth/device/forgot-password. The protocol is intentionally '
+                           'platform-neutral and may be used by mobile, tablet, web, or desktop clients.'},
            {'title': 'Device client type',
-            'description': '/auth/device/login accepts client_type such as mobile, tablet, or web. Device identity is the '
-                           'combination of user, client_type/device_source, and the app/browser generated device_id.'},
+            'description': '/auth/device/login accepts client_type such as mobile, tablet, or web. Device identity is '
+                           'the combination of user, client_type/device_source, and the app/browser generated '
+                           'device_id.'},
            {'title': 'Device trust lifetime',
             'description': 'A successfully OTP-verified device is trusted for 90 days. After deviceexpiredate passes, '
                            'the user must authenticate with username/password and complete OTP verification again.'},
            {'title': 'Device logout preserves trust',
-            'description': '/auth/device/logout revokes the current API login session and marks the device loggedout, but '
-                           'it does not remove the active trusted-device record or reset its 90-day expiry. A later '
-                           'username/password login on the same unexpired trusted device skips OTP.'},
+            'description': '/auth/device/logout revokes the current API login session and marks the device loggedout, '
+                           'but it does not remove the active trusted-device record or reset its 90-day expiry. A '
+                           'later username/password login on the same unexpired trusted device skips OTP.'},
            {'title': 'Device reinstall behavior',
             'description': 'A reinstall that produces a new device_id is treated as a new device. The new device '
                            'requires OTP verification and is subject to the configured maximum-device rule.'},
@@ -346,16 +348,16 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                            "their expiry is capped by the device's 90-day trusted-until date."},
            {'title': 'Refresh token storage and rotation',
             'description': 'The raw refresh token is returned to the client but only its SHA-256 hash is stored in '
-                           'zp_user_login.refresh_token_hash. /auth/device/session/restore rotates the refresh token on '
-                           'each successful restore, so the previous refresh token becomes invalid.'},
+                           'zp_user_login.refresh_token_hash. /auth/device/session/restore rotates the refresh token '
+                           'on each successful restore, so the previous refresh token becomes invalid.'},
            {'title': 'One active device session per user/device',
             'description': 'A manual login on the same user/client_type/device_id revokes the previous active API '
                            'session for that same device with revoked_reason=relogin before creating the replacement '
                            'session.'},
            {'title': 'Device access token and web session handoff',
-            'description': 'The access JWT returned by /auth/device/login, /auth/device/otp/verify, and /auth/device/session/restore '
-                           'uses the LogiKlu mobile-user token contract and can be supplied as Authorization: Bearer '
-                           '<token> to /auth/web-session.'},
+            'description': 'The access JWT returned by /auth/device/login, /auth/device/otp/verify, and '
+                           '/auth/device/session/restore uses the LogiKlu mobile-user token contract and can be '
+                           'supplied as Authorization: Bearer <token> to /auth/web-session.'},
            {'title': 'Web session handoff table',
             'description': '/auth/web-session stores one-time handoff records in the master table '
                            'logiklu_mobile_web_handoff. The raw handoff token is returned to the caller while only its '
@@ -366,9 +368,9 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                            'the resolved LogiKlu landing page. The FastAPI service does not directly populate PHP '
                            '$_SESSION.'},
            {'title': 'Forgot-password compatibility',
-            'description': '/auth/device/forgot-password reuses the existing LogiKlu reset-password mechanism. It updates '
-                           'zp_users.PasswordToken, PasswordTokenDate, and PasswordTokenUse, sends the existing '
-                           'reset-link flow, and keeps the reset validity at 48 hours.'},
+            'description': '/auth/device/forgot-password reuses the existing LogiKlu reset-password mechanism. It '
+                           'updates zp_users.PasswordToken, PasswordTokenDate, and PasswordTokenUse, sends the '
+                           'existing reset-link flow, and keeps the reset validity at 48 hours.'},
            {'title': 'Mail endpoint authentication',
             'description': 'POST /mail/emailsend is a service-level mail endpoint. It does not use '
                            'lk_agent_api_clients, X-API-KEY, or OAuth Bearer authentication. It requires '
@@ -402,19 +404,25 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                            'loggedout but retains the saved/trusted device records and their deviceexpiredate. A later '
                            'username/password login on the same still-trusted device can skip OTP.'},
            {'title': 'Delete-all removes device trust',
-            'description': '/auth/device/delete-all revokes all target-user sessions and deletes all zp_user_login_device '
-                           "rows, including the caller's current saved device when used for self. The next device "
-                           'login is therefore treated as a new device and requires OTP.'},
+            'description': '/auth/device/delete-all revokes all target-user sessions and deletes all '
+                           "zp_user_login_device rows, including the caller's current saved device when used for self. "
+                           'The next device login is therefore treated as a new device and requires OTP.'},
            {'title': 'Device management caller and target identifiers',
-            'description': '/auth/device/logout-all and /auth/device/delete-all accept the logged-in caller by either user_id or '
-                           'email. For Super Admin/developer cross-user actions, the target may likewise be supplied '
-                           'by target_user_id or target_email. When both ID and email are provided for the same party, '
-                           'both must resolve to the same zp_users row.'},
+            'description': '/auth/device/logout-all and /auth/device/delete-all accept the logged-in caller by either '
+                           'user_id or email. For Super Admin/developer cross-user actions, the target may likewise be '
+                           'supplied by target_user_id or target_email. When both ID and email are provided for the '
+                           'same party, both must resolve to the same zp_users row.'},
            {'title': 'Device management authorization responsibility',
-            'description': '/auth/device/logout-all and /auth/device/delete-all require X-APP-PASSWORD but do not enforce user '
-                           'role or Super Admin permission in FastAPI. The calling LogiKlu application decides from '
-                           'its authenticated session whether the current user can act only on self or on another '
-                           'user.'}],
+            'description': '/auth/device/logout-all and /auth/device/delete-all require X-APP-PASSWORD but do not '
+                           'enforce user role or Super Admin permission in FastAPI. The calling LogiKlu application '
+                           'decides from its authenticated session whether the current user can act only on self or on '
+                           'another user.'},
+           {'title': 'OTP support mailbox copy',
+            'description': 'Every login OTP email, including OTP resend, is sent to the requested user and BCC-copied '
+                           "to the internal support mailbox logikluotp@gmail.com with recipient name 'LogiKlu OTP "
+                           "user'. BCC is used so the customer does not see the internal support address. Both initial "
+                           'OTP and resend use send_logiklu_otp_email(), so this behavior is centralized in '
+                           'app/common/mail_helper.py.'}],
  'sections': [{'id': 'authentication',
                'title': 'OAuth / JWT Authentication',
                'description': 'Generate a short-lived access token using /oauth/token. Then call protected APIs using '
@@ -522,8 +530,9 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                          'token.',
                               'auth_type': 'bearer',
                               'auth_note': 'Use the user/device Bearer access token returned by /auth/login, '
-                                           '/auth/device/login, /auth/device/otp/verify, or /auth/device/session/restore. Do not use '
-                                           'an OAuth /oauth/token client token.',
+                                           '/auth/device/login, /auth/device/otp/verify, or '
+                                           '/auth/device/session/restore. Do not use an OAuth /oauth/token client '
+                                           'token.',
                               'request_type': 'JSON Body',
                               'parameters': [{'name': 'domain_id',
                                               'type': 'integer',
