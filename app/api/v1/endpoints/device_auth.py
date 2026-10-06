@@ -18,10 +18,12 @@ from app.schemas.device_auth import (
     DeviceOtpVerifyRequest,
     DeviceSessionRestoreRequest,
     DeviceUserManagementRequest,
+    DeviceUsernameRequest,
 )
 from app.services.device_auth_service import (
     DeviceAuthServiceError,
     device_login,
+    device_username_check,
     delete_all_saved_devices,
     forgot_device_password,
     logout_all_device_sessions,
@@ -116,6 +118,54 @@ def _unhandled_error(message: str, error_code: str, exc: Exception) -> JSONRespo
             },
         ),
     )
+
+
+
+@router.post("/username")
+def username_check(payload: DeviceUsernameRequest, request: Request):
+    """
+    Username-first login step.
+
+    Invalid username/email:
+        return error immediately.
+
+    Trusted, unexpired device (loggedin OR loggedout):
+        login immediately without password and without OTP.
+
+    All other valid-username cases:
+        return password_required; UI then calls /auth/device/login.
+    """
+    try:
+        result = device_username_check(
+            username=payload.username,
+            client_type=payload.client_type,
+            device_id=payload.device_id,
+            device_name=payload.device_name or "",
+            device_os=payload.device_os or "",
+            os_version=payload.os_version or "",
+            app_version=payload.app_version or "",
+            current_timezone=payload.current_timezone or "UTC",
+            client_ip=get_client_ip(request),
+        )
+
+        auth_status = str(
+            result.get("data", {}).get("authentication_status") or ""
+        )
+
+        return success_response(
+            message=result["message"],
+            meta=_meta(auth_status),
+            data=result["data"],
+        )
+
+    except DeviceAuthServiceError as exc:
+        return _service_error_response(exc)
+    except Exception as exc:
+        return _unhandled_error(
+            "Username verification failed",
+            "AUTH_USERNAME_CHECK_FAILED",
+            exc,
+        )
 
 
 @router.post("/login")

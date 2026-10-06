@@ -1,6 +1,6 @@
 # LogiKlu API Master Instruction data.
-# Includes internal OTP support-mailbox copy behavior.
-# Public Instruction data remains unchanged.
+# Username-first trusted-device login supports BOTH loggedin and loggedout states.
+# Public api_instruction_data.py remains unchanged.
 
 API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
  'subtitle': 'Internal developer guide for LogiKlu API, including OAuth/JWT client APIs, application login and '
@@ -422,7 +422,27 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                            "to the internal support mailbox logikluotp@gmail.com with recipient name 'LogiKlu OTP "
                            "user'. BCC is used so the customer does not see the internal support address. Both initial "
                            'OTP and resend use send_logiklu_otp_email(), so this behavior is centralized in '
-                           'app/common/mail_helper.py.'}],
+                           'app/common/mail_helper.py.'},
+           {'title': 'Username-first device login flow',
+            'description': 'Preferred login UI starts with POST /auth/device/username. Invalid Username / Email is '
+                           'rejected before showing a password field. If the same saved device is active, unexpired, '
+                           'and trusted, the user is authenticated immediately without password or OTP for BOTH '
+                           'loginstatus=loggedin and loginstatus=loggedout. When loginstatus=loggedin, the previous '
+                           'active session for that same user/device is revoked with relogin and a fresh '
+                           'access/refresh session is issued. Only a new, expired, inactive, or untrusted device '
+                           'returns authentication_status=password_required.'},
+           {'title': 'Username returned for password step',
+            'description': 'When POST /auth/device/username returns authentication_status=password_required, '
+                           'data.username contains the canonical zp_users.username value (falling back to the '
+                           'registered email/input only if username is empty). The client should retain this value and '
+                           'send it as username when it calls POST /auth/device/login after the user enters the '
+                           'password.'},
+           {'title': 'Trusted-device username step handles loggedin and loggedout',
+            'description': 'POST /auth/device/username must NOT return password_required merely because '
+                           'zp_user_login_device.loginstatus is loggedin. If status=active and deviceexpiredate is '
+                           'still valid, both loggedin and loggedout are trusted states and must complete passwordless '
+                           'login. The service creates a fresh session and revokes any previous active same-device '
+                           'session as relogin.'}],
  'sections': [{'id': 'authentication',
                'title': 'OAuth / JWT Authentication',
                'description': 'Generate a short-lived access token using /oauth/token. Then call protected APIs using '
@@ -619,6 +639,83 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                                                         'domain_checked': 1,
                                                                         'lk_app_user_timezone': 'Asia/Kolkata',
                                                                         'landing_page': 'https://logiklu.com/app/v1/account.php?action=leads'}}}},
+                             {'id': 'device-username-check',
+                              'title': 'Username First / Trusted Device Check',
+                              'method': 'POST',
+                              'path': '/auth/device/username',
+                              'purpose': 'First step of the device login screen. Validates Username / Email before '
+                                         'showing the password field. If the same device is already saved, active, '
+                                         'unexpired, and trusted, the API creates a fresh authenticated session '
+                                         'immediately without password or OTP whether the existing device loginstatus '
+                                         'is loggedin or loggedout. If an active session already exists for the same '
+                                         'user/device, it is revoked as relogin and replaced with the new session. '
+                                         'Only new, expired, inactive, or otherwise untrusted devices return '
+                                         'password_required and proceed to POST /auth/device/login.',
+                              'auth_type': 'none',
+                              'request_type': 'JSON Body',
+                              'parameters': [{'name': 'username',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'user@example.com',
+                                              'description': 'Matches zp_users.username or zp_users.email.'},
+                                             {'name': 'client_type',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'mobile',
+                                              'description': 'Calling client type such as mobile, tablet, or web.'},
+                                             {'name': 'device_id',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'LKDEV-EXAMPLE-12345678',
+                                              'description': 'Installation/device identifier used to find the saved '
+                                                             'device.'},
+                                             {'name': 'device_name',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Example Phone',
+                                              'description': 'Human-readable device/model name.'},
+                                             {'name': 'device_os',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Android',
+                                              'description': 'Operating-system family.'},
+                                             {'name': 'os_version',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': '16',
+                                              'description': 'Operating-system version.'},
+                                             {'name': 'app_version',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': '1.4.7',
+                                              'description': 'Calling application version.'},
+                                             {'name': 'current_timezone',
+                                              'type': 'string',
+                                              'required': 'No',
+                                              'example': 'Asia/Kolkata',
+                                              'description': 'Current client timezone.'}],
+                              'body': {'username': 'user@example.com',
+                                       'client_type': 'mobile',
+                                       'device_id': 'LKDEV-EXAMPLE-12345678',
+                                       'device_name': 'Example Phone',
+                                       'device_os': 'Android',
+                                       'os_version': '16',
+                                       'app_version': '1.4.7',
+                                       'current_timezone': 'Asia/Kolkata'},
+                              'response_example': {'status': 'success',
+                                                   'message': 'Username / Email verified. Please enter your password',
+                                                   'meta': {'generated_at': '2026-10-06T17:00:00+00:00',
+                                                            'mode': 'device_auth',
+                                                            'environment': 'production',
+                                                            'schema_version': 'logiklu_device_auth.v1',
+                                                            'authentication_status': 'password_required'},
+                                                   'data': {'authentication_status': 'password_required',
+                                                            'next_step': 'password',
+                                                            'username_valid': True,
+                                                            'password_required': True,
+                                                            'device_recognized': False,
+                                                            'device_state': 'new_device',
+                                                            'username': 'exampleuser'}}},
                              {'id': 'device-login',
                               'title': 'Trusted Device Login',
                               'method': 'POST',
@@ -13951,7 +14048,11 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
             {'code': 'AUTH_CALLER_NOT_FOUND',
              'http_status': 404,
              'meaning': 'The supplied caller user_id/email did not resolve to an active LogiKlu user.',
-             'fix': "Use the logged-in user's correct user_id or registered email address."}],
+             'fix': "Use the logged-in user's correct user_id or registered email address."},
+            {'code': 'AUTH_USERNAME_CHECK_FAILED',
+             'http_status': 500,
+             'meaning': 'The username-first device check could not be completed.',
+             'fix': 'Check master database connectivity and saved-device/session tables.'}],
  'logging': {'title': 'API Request Logging',
              'description': 'LogiKlu stores API request logs internally for audit, troubleshooting, and support.',
              'logged_fields': ['oauth_client_id',
