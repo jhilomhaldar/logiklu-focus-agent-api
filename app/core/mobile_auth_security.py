@@ -41,6 +41,7 @@ def issue_mobile_user_token(
     group_code: str,
     login_point: int,
     auth_version: int = 1,
+    session_id: str = "",
 ) -> Dict[str, Any]:
     now_ts = int(time.time())
     expires_in = get_mobile_token_expire_seconds()
@@ -59,6 +60,12 @@ def issue_mobile_user_token(
         "login_point": int(login_point or 0),
         "auth_version": int(auth_version or 1),
     }
+
+    # Device Auth tokens carry the exact zp_user_login.login_session.
+    # Existing /auth/login callers may omit it and keep the old token contract.
+    session_id = str(session_id or "").strip()
+    if session_id:
+        payload["session_id"] = session_id
 
     return {
         "access_token": create_jwt_token(payload),
@@ -195,3 +202,138 @@ def authenticate_mobile_user(request: Request) -> Dict[str, Any]:
     payload = decode_mobile_user_token(token)
     request.state.mobile_auth_context = payload
     return payload
+
+
+def _validate_active_device_session(
+    user_id: int,
+    session_id: str,
+) -> Dict[str, Any]:
+    """
+    Validate that the exact Device Auth login session carried in the JWT
+    still exists and is active in zp_user_login.
+    """
+    session_id = str(session_id or "").strip()
+
+    if not session_id:
+        raise MobileTokenError(
+            "This access token is not bound to a Device Auth session. Please sign in again."
+        )
+
+    connection = None
+
+    try:
+        connection = get_master_connection()
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    user_id,
+                    login_source,
+                    device_id,
+                    login_session,
+                    refresh_expires_date,
+                    revoked_date,
+                    revoked_reason,
+                    session_status,
+                    login_time,
+                    logout_time
+                FROM zp_user_login
+                WHERE user_id = %s
+                  AND login_session = %s
+                LIMIT 1
+                """,
+                (
+                    int(user_id),
+                    session_id,
+                ),
+            )
+            session = cursor.fetchone()
+
+        if not session:
+            raise MobileTokenError(
+                "This login session no longer exists. Please sign in again."
+            )
+
+        if str(session.get("session_status") or "").strip().lower() != "active":
+            raise MobileTokenError(
+                "This login session is no longer active. Please sign in again."
+            )
+
+        if session.get("revoked_date") is not None:
+            raise MobileTokenError(
+                "This login session has been revoked. Please sign in again."
+            )
+
+        if session.get("logout_time") is not None:
+            raise MobileTokenError(
+                "This login session has been logged out. Please sign in again."
+            )
+
+        refresh_expires_date = session.get("refresh_expires_date")
+        if refresh_expires_date is not None:
+            from datetime import datetime, timezone
+
+            now = datetime.now(timezone.utc)
+
+            # PyMySQL normally returns naive DATETIME values.
+            if getattr(refresh_expires_date, "tzinfo", None) is None:
+                refresh_expires_date = refresh_expires_date.replace(
+                    tzinfo=timezone.utc
+                )
+
+            if refresh_expires_date <= now:
+                raise MobileTokenError(
+                    "This login session has expired. Please sign in again."
+                )
+
+        return session
+
+    except MobileTokenError:
+        raise
+    except Exception as exc:
+        raise MobileTokenError(
+            "Unable to validate the active Device Auth session"
+        ) from exc
+    finally:
+        if connection:
+            connection.close()
+
+
+def authenticate_active_device_user(request: Request) -> Dict[str, Any]:
+    """
+    Strict authentication for APIs that must work only while the exact
+    Device Auth session is currently logged in.
+
+    Validates:
+    - JWT signature / expiry / issuer / audience
+    - API environment
+    - auth_token_version
+    - JWT session_id against zp_user_login
+    - session_status = active
+    - revoked_date IS NULL
+    - logout_time IS NULL
+    - refresh session has not expired
+    """
+    payload = authenticate_mobile_user(request)
+
+    user_id = int(payload.get("user_id") or 0)
+    session_id = str(payload.get("session_id") or "").strip()
+
+    session = _validate_active_device_session(
+        user_id=user_id,
+        session_id=session_id,
+    )
+
+    context = dict(payload)
+    context["active_session"] = {
+        "id": int(session.get("id") or 0),
+        "session_id": str(session.get("login_session") or ""),
+        "device_id": str(session.get("device_id") or ""),
+        "login_source": str(session.get("login_source") or ""),
+    }
+
+    request.state.mobile_auth_context = context
+    return context
+

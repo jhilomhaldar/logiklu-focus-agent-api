@@ -1,5 +1,5 @@
 # LogiKlu API Master Instruction data.
-# Username-first trusted-device login supports BOTH loggedin and loggedout states.
+# Device Profile tolerates blank legacy jos_users.status; explicit INACTIVE/ARCHIVED still rejected.
 # Public api_instruction_data.py remains unchanged.
 
 API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
@@ -442,7 +442,31 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                            'zp_user_login_device.loginstatus is loggedin. If status=active and deviceexpiredate is '
                            'still valid, both loggedin and loggedout are trusted states and must complete passwordless '
                            'login. The service creates a fresh session and revokes any previous active same-device '
-                           'session as relogin.'}],
+                           'session as relogin.'},
+           {'title': 'Device profile active-session security',
+            'description': 'GET /auth/device/profile requires a Device Auth access JWT containing session_id. '
+                           'authenticate_active_device_user verifies that session against zp_user_login and requires '
+                           'session_status=active, revoked_date NULL, logout_time NULL, and an unexpired '
+                           'refresh_expires_date. This means Profile access stops immediately when that device session '
+                           'logs out or is revoked.'},
+           {'title': 'Device profile field sources',
+            'description': 'For GET /auth/device/profile: master zp_users supplies '
+                           'name/profile_image/email/phone_country_code/phone/company/designation; selected client DB '
+                           'jos_users supplies user_type and landing_page; selected client DB lk_user_permission_group '
+                           'supplies product assignments and permission_group IDs; MASTER logiklu_user_types resolves '
+                           'those role IDs; master logiklu_landingpages supplies landing-page name, product and page.'},
+           {'title': 'Device profile product assignments',
+            'description': 'GET /auth/device/profile returns products as an array because one user may be assigned to '
+                           'CRM and LEADANALYTICS with different roles. Product assignments come from the selected '
+                           'client database lk_user_permission_group using the global user ID. permission_group is '
+                           'then resolved against MASTER database logiklu_user_types.id to return role '
+                           'type_code/type_name. Product labels are CRM -> CRM and LEADANALYTICS -> Lead Actuator.'},
+           {'title': 'Device profile client-user status handling',
+            'description': "When resolving the selected account's jos_users row, GET /auth/device/profile rejects "
+                           'status only when it is explicitly INACTIVE and rejects active_status only when it is '
+                           'explicitly ARCHIVED. A blank legacy jos_users.status value is allowed because existing web '
+                           'profile/avatar update flows can leave that ENUM as an empty string. Device authentication '
+                           'security remains enforced by the active Device Auth session and master zp_users.status.'}],
  'sections': [{'id': 'authentication',
                'title': 'OAuth / JWT Authentication',
                'description': 'Generate a short-lived access token using /oauth/token. Then call protected APIs using '
@@ -639,6 +663,73 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                                                         'domain_checked': 1,
                                                                         'lk_app_user_timezone': 'Asia/Kolkata',
                                                                         'landing_page': 'https://logiklu.com/app/v1/account.php?action=leads'}}}},
+                             {'id': 'device-profile-view',
+                              'title': 'View Profile',
+                              'method': 'GET',
+                              'path': '/auth/device/profile',
+                              'purpose': "Return the currently logged-in user's fresh profile for the selected "
+                                         'domain/account. The logged-in identity is derived from the Device Auth '
+                                         'Bearer token and its active zp_user_login session. Master zp_users supplies '
+                                         'the profile fields; selected client DB jos_users supplies user_type and '
+                                         'landing_page; selected client DB lk_user_permission_group supplies every '
+                                         'assigned product and its permission_group ID; master DB logiklu_user_types '
+                                         'resolves that permission_group ID to the product role; and master '
+                                         'logiklu_landingpages supplies the landing-page display name and URL.',
+                              'auth_type': 'bearer',
+                              'auth_note': 'Requires a Device Auth access token belonging to a CURRENT active device '
+                                           'session. Do not send user_id or email. Tokens created before session_id '
+                                           'was added must sign in again before using this endpoint.',
+                              'request_type': 'Query Parameters',
+                              'parameters': [{'name': 'domain_id',
+                                              'type': 'integer',
+                                              'required': 'Yes',
+                                              'example': '5',
+                                              'description': 'Selected LogiKlu domain ID.'},
+                                             {'name': 'account_id',
+                                              'type': 'integer',
+                                              'required': 'Yes',
+                                              'example': '4',
+                                              'description': 'Selected account ID matching the domain.'}],
+                              'examples': [{'title': 'View selected account profile',
+                                            'description': 'Use the Device Auth access token and the account selected '
+                                                           'in the app.',
+                                            'path': '/auth/device/profile',
+                                            'query': {'domain_id': 5, 'account_id': 4}}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'Profile fetched successfully',
+                                                   'meta': {'generated_at': '2026-10-08T09:35:00+00:00',
+                                                            'mode': 'device_auth',
+                                                            'environment': 'development',
+                                                            'schema_version': 'logiklu_device_auth.v1',
+                                                            'authentication_status': 'authenticated',
+                                                            'domain_id': 5,
+                                                            'account_id': 4},
+                                                   'data': {'user_id': 6717,
+                                                            'domain_id': 5,
+                                                            'account_id': 4,
+                                                            'account_name': 'Critical Brandwidth',
+                                                            'account_role': {'code': 'clientsuperadmin',
+                                                                             'name': 'Client Super Admin'},
+                                                            'avatar_url': 'https://logiklu.com/upload/avatar/example.jpg',
+                                                            'name': 'Alex Hans',
+                                                            'email': 'user@example.com',
+                                                            'phone_code': '+1',
+                                                            'phone': '5551234567',
+                                                            'company': 'Example Company',
+                                                            'designation': 'Manager',
+                                                            'landing_page': {'id': 4,
+                                                                             'name': 'Deal Pipeline',
+                                                                             'url': 'https://logiklu.com/app/v1/deals.php?action=pipeline'},
+                                                            'products': [{'code': 'CRM',
+                                                                          'label': 'CRM',
+                                                                          'role': {'id': 5,
+                                                                                   'code': 'clientsuperadmin',
+                                                                                   'name': 'Client Super Admin'}},
+                                                                         {'code': 'LEADANALYTICS',
+                                                                          'label': 'Lead Actuator',
+                                                                          'role': {'id': 7,
+                                                                                   'code': 'supervisor',
+                                                                                   'name': 'Manager'}}]}}},
                              {'id': 'device-username-check',
                               'title': 'Username First / Trusted Device Check',
                               'method': 'POST',
@@ -14052,7 +14143,31 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
             {'code': 'AUTH_USERNAME_CHECK_FAILED',
              'http_status': 500,
              'meaning': 'The username-first device check could not be completed.',
-             'fix': 'Check master database connectivity and saved-device/session tables.'}],
+             'fix': 'Check master database connectivity and saved-device/session tables.'},
+            {'code': 'DEVICE_PROFILE_ACCOUNT_REQUIRED',
+             'http_status': 422,
+             'meaning': 'domain_id or account_id is missing/invalid.',
+             'fix': 'Send positive domain_id and account_id query parameters.'},
+            {'code': 'DEVICE_PROFILE_ACCOUNT_NOT_FOUND',
+             'http_status': 404,
+             'meaning': 'The domain/account combination is not an active LogiKlu account.',
+             'fix': 'Use the selected account values returned by Device Auth login.'},
+            {'code': 'DEVICE_PROFILE_ACCOUNT_FORBIDDEN',
+             'http_status': 403,
+             'meaning': 'The logged-in global user does not exist in the selected client DB jos_users.',
+             'fix': 'Select an account assigned to the logged-in user.'},
+            {'code': 'DEVICE_PROFILE_ACCOUNT_USER_INACTIVE',
+             'http_status': 403,
+             'meaning': "The user's jos_users record is inactive for the selected account.",
+             'fix': 'Activate the user in that client account.'},
+            {'code': 'DEVICE_PROFILE_ACCOUNT_USER_ARCHIVED',
+             'http_status': 403,
+             'meaning': "The user's jos_users record is archived for the selected account.",
+             'fix': 'Restore the user in that client account.'},
+            {'code': 'DEVICE_PROFILE_FETCH_FAILED',
+             'http_status': 500,
+             'meaning': 'An unexpected profile retrieval error occurred.',
+             'fix': 'Check master/client database connectivity and configuration.'}],
  'logging': {'title': 'API Request Logging',
              'description': 'LogiKlu stores API request logs internally for audit, troubleshooting, and support.',
              'logged_fields': ['oauth_client_id',
