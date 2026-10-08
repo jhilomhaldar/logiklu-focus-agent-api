@@ -1,5 +1,5 @@
 # LogiKlu API Master Instruction data.
-# Adds secure Device Auth change-password API.
+# Change Password uses zp_users.password_history JSON for last-3 password reuse protection.
 # Public api_instruction_data.py remains unchanged.
 
 API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
@@ -443,37 +443,32 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                            'still valid, both loggedin and loggedout are trusted states and must complete passwordless '
                            'login. The service creates a fresh session and revokes any previous active same-device '
                            'session as relogin.'},
-           {'title': 'Device profile active-session security',
-            'description': 'GET /auth/device/profile requires a Device Auth access JWT containing session_id. '
-                           'authenticate_active_device_user verifies that session against zp_user_login and requires '
-                           'session_status=active, revoked_date NULL, logout_time NULL, and an unexpired '
-                           'refresh_expires_date. This means Profile access stops immediately when that device session '
-                           'logs out or is revoked.'},
-           {'title': 'Device profile field sources',
-            'description': 'For GET /auth/device/profile: master zp_users supplies '
-                           'name/profile_image/email/phone_country_code/phone/company/designation; selected client DB '
-                           'jos_users supplies user_type and landing_page; selected client DB lk_user_permission_group '
-                           'supplies product assignments and permission_group IDs; MASTER logiklu_user_types resolves '
-                           'those role IDs; master logiklu_landingpages supplies landing-page name, product and page.'},
-           {'title': 'Device profile product assignments',
-            'description': 'GET /auth/device/profile returns products as an array because one user may be assigned to '
-                           'CRM and LEADANALYTICS with different roles. Product assignments come from the selected '
-                           'client database lk_user_permission_group using the global user ID. permission_group is '
-                           'then resolved against MASTER database logiklu_user_types.id to return role '
-                           'type_code/type_name. Product labels are CRM -> CRM and LEADANALYTICS -> Lead Actuator.'},
-           {'title': 'Device profile client-user status handling',
-            'description': "When resolving the selected account's jos_users row, GET /auth/device/profile rejects "
-                           'status only when it is explicitly INACTIVE and rejects active_status only when it is '
-                           'explicitly ARCHIVED. A blank legacy jos_users.status value is allowed because existing web '
-                           'profile/avatar update flows can leave that ENUM as an empty string. Device authentication '
-                           'security remains enforced by the active Device Auth session and master zp_users.status.'},
-           {'title': 'Device change-password storage and session behavior',
-            'description': 'POST /auth/device/change-password is a logged-in-only identity API. The user is derived '
-                           'from the active Device Auth Bearer session. The old password is verified using the same '
-                           'MD5 compatibility as login. Successful change writes plaintext new_password to master '
-                           'zp_users.password2 and MD5(new_password) to master zp_users.password. The current Device '
-                           'Auth session is intentionally kept valid and the response returns session_valid=true and '
-                           'reauthentication_required=false.'}],
+           {'title': 'User Profile endpoint namespace',
+            'description': 'Profile is not a Device Authentication route. The endpoint is GET /user/profile/ and is '
+                           'implemented in app/api/v1/endpoints/user_profile.py with service '
+                           'app/services/user_profile_service.py. No profile route should remain inside '
+                           'app/api/v1/endpoints/device_auth.py.'},
+           {'title': 'User Profile product assignments',
+            'description': 'The products array may contain multiple products with different roles. Assignments are '
+                           'read from the selected client DB lk_user_permission_group. permission_group is resolved '
+                           'against MASTER DB logiklu_user_types.id. CRM label is CRM; LEADANALYTICS label is Lead '
+                           'Actuator.'},
+           {'title': 'User Profile client-user status handling',
+            'description': 'Selected client jos_users status rejects only explicit INACTIVE. A blank legacy status is '
+                           'allowed. active_status rejects only explicit ARCHIVED. Authentication remains protected by '
+                           'the active Device Auth session and master zp_users.status.'},
+           {'title': 'User Profile change-password route',
+            'description': 'Change Password belongs to the User Profile namespace and is POST '
+                           '/user/profile/change-password. Its endpoint implementation is '
+                           'app/api/v1/endpoints/user_profile.py, schema is app/schemas/user_profile.py, and business '
+                           'logic is app/services/user_profile_service.py. No change-password route or business logic '
+                           'should remain in device_auth.py or device_auth_service.py.'},
+           {'title': 'User Profile password history rule',
+            'description': 'POST /user/profile/change-password rejects a new password when it is the same as the '
+                           "current password or matches any of the user's last 3 previous passwords. No separate "
+                           'password-history table is used. Master zp_users.password_history is a JSON array '
+                           'containing at most 3 previous MD5 password hashes, newest first. Current password remains '
+                           'in zp_users.password. Historical plaintext passwords are never stored.'}],
  'sections': [{'id': 'authentication',
                'title': 'OAuth / JWT Authentication',
                'description': 'Generate a short-lived access token using /oauth/token. Then call protected APIs using '
@@ -670,119 +665,6 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                                                         'domain_checked': 1,
                                                                         'lk_app_user_timezone': 'Asia/Kolkata',
                                                                         'landing_page': 'https://logiklu.com/app/v1/account.php?action=leads'}}}},
-                             {'id': 'device-profile-view',
-                              'title': 'View Profile',
-                              'method': 'GET',
-                              'path': '/auth/device/profile',
-                              'purpose': "Return the currently logged-in user's fresh profile for the selected "
-                                         'domain/account. The logged-in identity is derived from the Device Auth '
-                                         'Bearer token and its active zp_user_login session. Master zp_users supplies '
-                                         'the profile fields; selected client DB jos_users supplies user_type and '
-                                         'landing_page; selected client DB lk_user_permission_group supplies every '
-                                         'assigned product and its permission_group ID; master DB logiklu_user_types '
-                                         'resolves that permission_group ID to the product role; and master '
-                                         'logiklu_landingpages supplies the landing-page display name and URL.',
-                              'auth_type': 'bearer',
-                              'auth_note': 'Requires a Device Auth access token belonging to a CURRENT active device '
-                                           'session. Do not send user_id or email. Tokens created before session_id '
-                                           'was added must sign in again before using this endpoint.',
-                              'request_type': 'Query Parameters',
-                              'parameters': [{'name': 'domain_id',
-                                              'type': 'integer',
-                                              'required': 'Yes',
-                                              'example': '5',
-                                              'description': 'Selected LogiKlu domain ID.'},
-                                             {'name': 'account_id',
-                                              'type': 'integer',
-                                              'required': 'Yes',
-                                              'example': '4',
-                                              'description': 'Selected account ID matching the domain.'}],
-                              'examples': [{'title': 'View selected account profile',
-                                            'description': 'Use the Device Auth access token and the account selected '
-                                                           'in the app.',
-                                            'path': '/auth/device/profile',
-                                            'query': {'domain_id': 5, 'account_id': 4}}],
-                              'response_example': {'status': 'success',
-                                                   'message': 'Profile fetched successfully',
-                                                   'meta': {'generated_at': '2026-10-08T09:35:00+00:00',
-                                                            'mode': 'device_auth',
-                                                            'environment': 'development',
-                                                            'schema_version': 'logiklu_device_auth.v1',
-                                                            'authentication_status': 'authenticated',
-                                                            'domain_id': 5,
-                                                            'account_id': 4},
-                                                   'data': {'user_id': 6717,
-                                                            'domain_id': 5,
-                                                            'account_id': 4,
-                                                            'account_name': 'Critical Brandwidth',
-                                                            'account_role': {'code': 'clientsuperadmin',
-                                                                             'name': 'Client Super Admin'},
-                                                            'avatar_url': 'https://logiklu.com/upload/avatar/example.jpg',
-                                                            'name': 'Alex Hans',
-                                                            'email': 'user@example.com',
-                                                            'phone_code': '+1',
-                                                            'phone': '5551234567',
-                                                            'company': 'Example Company',
-                                                            'designation': 'Manager',
-                                                            'landing_page': {'id': 4,
-                                                                             'name': 'Deal Pipeline',
-                                                                             'url': 'https://logiklu.com/app/v1/deals.php?action=pipeline'},
-                                                            'products': [{'code': 'CRM',
-                                                                          'label': 'CRM',
-                                                                          'role': {'id': 5,
-                                                                                   'code': 'clientsuperadmin',
-                                                                                   'name': 'Client Super Admin'}},
-                                                                         {'code': 'LEADANALYTICS',
-                                                                          'label': 'Lead Actuator',
-                                                                          'role': {'id': 7,
-                                                                                   'code': 'supervisor',
-                                                                                   'name': 'Manager'}}]}}},
-                             {'id': 'device-change-password',
-                              'title': 'Change Password',
-                              'method': 'POST',
-                              'path': '/auth/device/change-password',
-                              'purpose': "Change the currently logged-in user's master LogiKlu password. The API "
-                                         'requires a Device Auth Bearer token tied to a current active zp_user_login '
-                                         'session. old_password is verified against the existing zp_users.password MD5 '
-                                         'value. On success, new_password is stored directly in zp_users.password2 and '
-                                         'MD5(new_password) is stored in zp_users.password. No user_id or email is '
-                                         'accepted from the caller.',
-                              'auth_type': 'bearer',
-                              'auth_note': 'Authorization: Bearer <Device Auth access_token>. The token must be bound '
-                                           'to a current active Device Auth session. The current session remains valid '
-                                           'after successful password change.',
-                              'request_type': 'JSON Body',
-                              'parameters': [{'name': 'old_password',
-                                              'type': 'string',
-                                              'required': 'Yes',
-                                              'example': 'CurrentPassword',
-                                              'description': 'Current login password. Verified against '
-                                                             'zp_users.password using legacy MD5 compatibility.'},
-                                             {'name': 'new_password',
-                                              'type': 'string',
-                                              'required': 'Yes',
-                                              'example': 'NewPassword',
-                                              'description': 'New password. Stored directly in zp_users.password2 and '
-                                                             'stored as MD5 in zp_users.password.'},
-                                             {'name': 'confirm_password',
-                                              'type': 'string',
-                                              'required': 'Yes',
-                                              'example': 'NewPassword',
-                                              'description': 'Must exactly match new_password.'}],
-                              'body': {'old_password': 'CurrentPassword',
-                                       'new_password': 'NewPassword',
-                                       'confirm_password': 'NewPassword'},
-                              'response_example': {'status': 'success',
-                                                   'message': 'Password changed successfully',
-                                                   'meta': {'generated_at': '2026-10-08T10:45:00+00:00',
-                                                            'mode': 'device_auth',
-                                                            'environment': 'development',
-                                                            'schema_version': 'logiklu_device_auth.v1',
-                                                            'authentication_status': 'authenticated'},
-                                                   'data': {'authentication_status': 'authenticated',
-                                                            'password_changed': True,
-                                                            'session_valid': True,
-                                                            'reauthentication_required': False}}},
                              {'id': 'device-username-check',
                               'title': 'Username First / Trusted Device Check',
                               'method': 'POST',
@@ -1289,6 +1171,121 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                                             'authentication_status': 'password_reset_requested'},
                                                    'data': {'masked_email': 'us**r@example.com',
                                                             'expires_in': 172800}}}]},
+              {'id': 'user-profile',
+               'title': 'User Profile',
+               'description': 'Logged-in user profile APIs. These endpoints use the Device Auth Bearer access token '
+                              'and require the exact zp_user_login session to still be active.',
+               'endpoints': [{'id': 'user-profile-view',
+                              'title': 'View Profile',
+                              'method': 'GET',
+                              'path': '/user/profile/',
+                              'purpose': "Return the currently logged-in user's fresh profile for the selected "
+                                         'domain/account. Master zp_users supplies profile fields; selected client DB '
+                                         'jos_users supplies account user_type and landing_page; selected client DB '
+                                         'lk_user_permission_group supplies assigned products and permission_group '
+                                         'IDs; master logiklu_user_types resolves each product role; and master '
+                                         'logiklu_landingpages supplies landing-page display information.',
+                              'auth_type': 'bearer',
+                              'auth_note': 'Authorization: Bearer <Device Auth access_token>. The token must belong to '
+                                           'a CURRENT active zp_user_login session. Do not send user_id/email.',
+                              'request_type': 'Query Parameters',
+                              'parameters': [{'name': 'domain_id',
+                                              'type': 'integer',
+                                              'required': 'Yes',
+                                              'example': '5',
+                                              'description': 'Selected LogiKlu domain ID.'},
+                                             {'name': 'account_id',
+                                              'type': 'integer',
+                                              'required': 'Yes',
+                                              'example': '4',
+                                              'description': 'Selected account ID matching the domain.'}],
+                              'examples': [{'title': 'View selected-account profile',
+                                            'description': 'Use the logged-in Device Auth Bearer token and selected '
+                                                           'account.',
+                                            'path': '/user/profile/',
+                                            'query': {'domain_id': 5, 'account_id': 4}}],
+                              'response_example': {'status': 'success',
+                                                   'message': 'Profile fetched successfully',
+                                                   'meta': {'generated_at': '2026-10-08T10:45:00+00:00',
+                                                            'mode': 'user_profile',
+                                                            'environment': 'development',
+                                                            'schema_version': 'logiklu_user_profile.v1',
+                                                            'authentication_status': 'authenticated',
+                                                            'domain_id': 5,
+                                                            'account_id': 4},
+                                                   'data': {'user_id': 5160,
+                                                            'domain_id': 5,
+                                                            'account_id': 4,
+                                                            'account_name': 'Critical Brandwidth',
+                                                            'account_role': {'code': 'clientsuperadmin',
+                                                                             'name': 'Client Super Admin'},
+                                                            'products': [{'code': 'CRM',
+                                                                          'label': 'CRM',
+                                                                          'role': {'id': 5,
+                                                                                   'code': 'clientsuperadmin',
+                                                                                   'name': 'Client Super Admin'}},
+                                                                         {'code': 'LEADANALYTICS',
+                                                                          'label': 'Lead Actuator',
+                                                                          'role': {'id': 7,
+                                                                                   'code': 'supervisor',
+                                                                                   'name': 'Manager'}}],
+                                                            'avatar_url': 'https://logiklu.com/upload/avatar/example.jpg',
+                                                            'name': 'Jhilom Haldar',
+                                                            'email': 'user@example.com',
+                                                            'phone_code': '+91',
+                                                            'phone': '9876543210',
+                                                            'company': 'Example Company',
+                                                            'designation': 'Manager',
+                                                            'landing_page': {'id': 3,
+                                                                             'name': 'Deal Pipeline',
+                                                                             'url': 'https://logiklu.com/app/v1/deals.php?action=pipeline'}}}},
+                             {'id': 'user-profile-change-password',
+                              'title': 'Change Password',
+                              'method': 'POST',
+                              'path': '/user/profile/change-password',
+                              'purpose': "Change the currently logged-in user's LogiKlu password. The old password is "
+                                         'verified against master zp_users.password using MD5. The new password must '
+                                         'be different from the current password and cannot match any of the last 3 '
+                                         'previous passwords. The last 3 previous MD5 hashes are stored directly in '
+                                         'master zp_users.password_history as a JSON array, newest first. On success, '
+                                         'the current password hash is pushed into password_history, only 3 previous '
+                                         'hashes are retained, new_password is stored directly in zp_users.password2, '
+                                         'and MD5(new_password) is stored in zp_users.password.',
+                              'auth_type': 'bearer',
+                              'auth_note': 'Authorization: Bearer <Device Auth access_token>. The token must belong to '
+                                           'a CURRENT active zp_user_login session. No user_id/email is accepted from '
+                                           'the request.',
+                              'request_type': 'JSON Body',
+                              'parameters': [{'name': 'old_password',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'CurrentPassword',
+                                              'description': 'Current LogiKlu password.'},
+                                             {'name': 'new_password',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'NewPassword',
+                                              'description': 'Stored directly in password2 and as MD5 in password.'},
+                                             {'name': 'confirm_password',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'NewPassword',
+                                              'description': 'Must match new_password.'}],
+                              'body': {'old_password': 'CurrentPassword',
+                                       'new_password': 'NewPassword',
+                                       'confirm_password': 'NewPassword'},
+                              'response_example': {'status': 'success',
+                                                   'message': 'Password changed successfully',
+                                                   'meta': {'generated_at': '2026-10-08T10:45:00+00:00',
+                                                            'mode': 'user_profile',
+                                                            'environment': 'development',
+                                                            'schema_version': 'logiklu_user_profile.v1',
+                                                            'authentication_status': 'authenticated'},
+                                                   'data': {'authentication_status': 'authenticated',
+                                                            'password_changed': True,
+                                                            'password_history_rule': 3,
+                                                            'session_valid': True,
+                                                            'reauthentication_required': False}}}]},
               {'id': 'mail-service',
                'title': 'Mail Service',
                'description': 'Internal generic email-delivery endpoint and shared mail-service flow. The endpoint is '
@@ -14217,34 +14214,42 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
              'http_status': 403,
              'meaning': "The user's jos_users record is archived for the selected account.",
              'fix': 'Restore the user in that client account.'},
-            {'code': 'DEVICE_PROFILE_FETCH_FAILED',
+            {'code': 'USER_PROFILE_FETCH_FAILED',
              'http_status': 500,
-             'meaning': 'An unexpected profile retrieval error occurred.',
-             'fix': 'Check master/client database connectivity and configuration.'},
-            {'code': 'AUTH_OLD_PASSWORD_REQUIRED',
+             'meaning': 'An unexpected error occurred while fetching the user profile.',
+             'fix': 'Check master/client database connectivity and profile/account configuration.'},
+            {'code': 'USER_PASSWORD_OLD_REQUIRED',
              'http_status': 422,
              'meaning': 'old_password was not supplied.',
-             'fix': "Send the user's existing password."},
-            {'code': 'AUTH_NEW_PASSWORD_REQUIRED',
+             'fix': 'Send the current password.'},
+            {'code': 'USER_PASSWORD_NEW_REQUIRED',
              'http_status': 422,
              'meaning': 'new_password was not supplied.',
              'fix': 'Send the new password.'},
-            {'code': 'AUTH_CONFIRM_PASSWORD_REQUIRED',
+            {'code': 'USER_PASSWORD_CONFIRM_REQUIRED',
              'http_status': 422,
              'meaning': 'confirm_password was not supplied.',
-             'fix': 'Send the confirmation password.'},
-            {'code': 'AUTH_PASSWORD_CONFIRM_MISMATCH',
+             'fix': 'Send the password confirmation.'},
+            {'code': 'USER_PASSWORD_CONFIRM_MISMATCH',
              'http_status': 422,
-             'meaning': 'new_password and confirm_password are different.',
-             'fix': 'Send matching new_password and confirm_password values.'},
-            {'code': 'AUTH_OLD_PASSWORD_INVALID',
+             'meaning': 'new_password and confirm_password do not match.',
+             'fix': 'Send matching values.'},
+            {'code': 'USER_PASSWORD_OLD_INVALID',
              'http_status': 400,
-             'meaning': 'The supplied old password does not match zp_users.password.',
-             'fix': "Use the user's current login password."},
-            {'code': 'AUTH_PASSWORD_CHANGE_FAILED',
+             'meaning': 'The supplied old password does not match the current password.',
+             'fix': 'Use the current LogiKlu password.'},
+            {'code': 'USER_PASSWORD_CHANGE_FAILED',
              'http_status': 500,
-             'meaning': 'The master password update could not be completed.',
-             'fix': 'Check master database connectivity and zp_users.'}],
+             'meaning': 'The master zp_users password update failed.',
+             'fix': 'Check master DB connectivity and zp_users.'},
+            {'code': 'USER_PASSWORD_SAME_AS_CURRENT',
+             'http_status': 400,
+             'meaning': 'The new password is identical to the current password.',
+             'fix': 'Choose a different new password.'},
+            {'code': 'USER_PASSWORD_RECENTLY_USED',
+             'http_status': 400,
+             'meaning': 'The new password matches one of the last 3 previous passwords.',
+             'fix': 'Choose a password that was not used in the last 3 password changes.'}],
  'logging': {'title': 'API Request Logging',
              'description': 'LogiKlu stores API request logs internally for audit, troubleshooting, and support.',
              'logged_fields': ['oauth_client_id',
