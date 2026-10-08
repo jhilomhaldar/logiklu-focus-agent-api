@@ -1,5 +1,5 @@
 # LogiKlu API Master Instruction data.
-# Device Profile tolerates blank legacy jos_users.status; explicit INACTIVE/ARCHIVED still rejected.
+# Adds secure Device Auth change-password API.
 # Public api_instruction_data.py remains unchanged.
 
 API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
@@ -466,7 +466,14 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                            'status only when it is explicitly INACTIVE and rejects active_status only when it is '
                            'explicitly ARCHIVED. A blank legacy jos_users.status value is allowed because existing web '
                            'profile/avatar update flows can leave that ENUM as an empty string. Device authentication '
-                           'security remains enforced by the active Device Auth session and master zp_users.status.'}],
+                           'security remains enforced by the active Device Auth session and master zp_users.status.'},
+           {'title': 'Device change-password storage and session behavior',
+            'description': 'POST /auth/device/change-password is a logged-in-only identity API. The user is derived '
+                           'from the active Device Auth Bearer session. The old password is verified using the same '
+                           'MD5 compatibility as login. Successful change writes plaintext new_password to master '
+                           'zp_users.password2 and MD5(new_password) to master zp_users.password. The current Device '
+                           'Auth session is intentionally kept valid and the response returns session_valid=true and '
+                           'reauthentication_required=false.'}],
  'sections': [{'id': 'authentication',
                'title': 'OAuth / JWT Authentication',
                'description': 'Generate a short-lived access token using /oauth/token. Then call protected APIs using '
@@ -730,6 +737,52 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
                                                                           'role': {'id': 7,
                                                                                    'code': 'supervisor',
                                                                                    'name': 'Manager'}}]}}},
+                             {'id': 'device-change-password',
+                              'title': 'Change Password',
+                              'method': 'POST',
+                              'path': '/auth/device/change-password',
+                              'purpose': "Change the currently logged-in user's master LogiKlu password. The API "
+                                         'requires a Device Auth Bearer token tied to a current active zp_user_login '
+                                         'session. old_password is verified against the existing zp_users.password MD5 '
+                                         'value. On success, new_password is stored directly in zp_users.password2 and '
+                                         'MD5(new_password) is stored in zp_users.password. No user_id or email is '
+                                         'accepted from the caller.',
+                              'auth_type': 'bearer',
+                              'auth_note': 'Authorization: Bearer <Device Auth access_token>. The token must be bound '
+                                           'to a current active Device Auth session. The current session remains valid '
+                                           'after successful password change.',
+                              'request_type': 'JSON Body',
+                              'parameters': [{'name': 'old_password',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'CurrentPassword',
+                                              'description': 'Current login password. Verified against '
+                                                             'zp_users.password using legacy MD5 compatibility.'},
+                                             {'name': 'new_password',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'NewPassword',
+                                              'description': 'New password. Stored directly in zp_users.password2 and '
+                                                             'stored as MD5 in zp_users.password.'},
+                                             {'name': 'confirm_password',
+                                              'type': 'string',
+                                              'required': 'Yes',
+                                              'example': 'NewPassword',
+                                              'description': 'Must exactly match new_password.'}],
+                              'body': {'old_password': 'CurrentPassword',
+                                       'new_password': 'NewPassword',
+                                       'confirm_password': 'NewPassword'},
+                              'response_example': {'status': 'success',
+                                                   'message': 'Password changed successfully',
+                                                   'meta': {'generated_at': '2026-10-08T10:45:00+00:00',
+                                                            'mode': 'device_auth',
+                                                            'environment': 'development',
+                                                            'schema_version': 'logiklu_device_auth.v1',
+                                                            'authentication_status': 'authenticated'},
+                                                   'data': {'authentication_status': 'authenticated',
+                                                            'password_changed': True,
+                                                            'session_valid': True,
+                                                            'reauthentication_required': False}}},
                              {'id': 'device-username-check',
                               'title': 'Username First / Trusted Device Check',
                               'method': 'POST',
@@ -14167,7 +14220,31 @@ API_MASTER_INSTRUCTION_DATA = {'title': 'LogiKlu API Guide',
             {'code': 'DEVICE_PROFILE_FETCH_FAILED',
              'http_status': 500,
              'meaning': 'An unexpected profile retrieval error occurred.',
-             'fix': 'Check master/client database connectivity and configuration.'}],
+             'fix': 'Check master/client database connectivity and configuration.'},
+            {'code': 'AUTH_OLD_PASSWORD_REQUIRED',
+             'http_status': 422,
+             'meaning': 'old_password was not supplied.',
+             'fix': "Send the user's existing password."},
+            {'code': 'AUTH_NEW_PASSWORD_REQUIRED',
+             'http_status': 422,
+             'meaning': 'new_password was not supplied.',
+             'fix': 'Send the new password.'},
+            {'code': 'AUTH_CONFIRM_PASSWORD_REQUIRED',
+             'http_status': 422,
+             'meaning': 'confirm_password was not supplied.',
+             'fix': 'Send the confirmation password.'},
+            {'code': 'AUTH_PASSWORD_CONFIRM_MISMATCH',
+             'http_status': 422,
+             'meaning': 'new_password and confirm_password are different.',
+             'fix': 'Send matching new_password and confirm_password values.'},
+            {'code': 'AUTH_OLD_PASSWORD_INVALID',
+             'http_status': 400,
+             'meaning': 'The supplied old password does not match zp_users.password.',
+             'fix': "Use the user's current login password."},
+            {'code': 'AUTH_PASSWORD_CHANGE_FAILED',
+             'http_status': 500,
+             'meaning': 'The master password update could not be completed.',
+             'fix': 'Check master database connectivity and zp_users.'}],
  'logging': {'title': 'API Request Logging',
              'description': 'LogiKlu stores API request logs internally for audit, troubleshooting, and support.',
              'logged_fields': ['oauth_client_id',
