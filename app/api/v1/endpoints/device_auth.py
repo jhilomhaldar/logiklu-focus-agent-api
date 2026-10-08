@@ -1,9 +1,13 @@
 import hmac
 import os
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import JSONResponse
 
+from app.core.mobile_auth_security import (
+    MobileTokenError,
+    authenticate_active_device_user,
+)
 from app.core.response import (
     current_utc_datetime,
     error_response,
@@ -19,6 +23,10 @@ from app.schemas.device_auth import (
     DeviceSessionRestoreRequest,
     DeviceUserManagementRequest,
     DeviceUsernameRequest,
+)
+from app.services.device_profile_service import (
+    DeviceProfileServiceError,
+    get_device_profile,
 )
 from app.services.device_auth_service import (
     DeviceAuthServiceError,
@@ -66,6 +74,37 @@ def _service_error_response(exc: DeviceAuthServiceError) -> JSONResponse:
 
 
 
+
+
+def _mobile_token_error_response(
+    exc: MobileTokenError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=401,
+        content=error_response(
+            message=str(exc),
+            error_code="MOBILE_AUTH_TOKEN_INVALID",
+            data={
+                "timestamp": current_utc_datetime(),
+            },
+        ),
+    )
+
+
+def _profile_error_response(
+    exc: DeviceProfileServiceError,
+) -> JSONResponse:
+    data = dict(exc.data or {})
+    data["timestamp"] = current_utc_datetime()
+
+    return JSONResponse(
+        status_code=exc.http_status,
+        content=error_response(
+            message=exc.message,
+            error_code=exc.error_code,
+            data=data,
+        ),
+    )
 
 
 def _validate_app_password(app_password: str) -> None:
@@ -119,6 +158,57 @@ def _unhandled_error(message: str, error_code: str, exc: Exception) -> JSONRespo
         ),
     )
 
+
+
+
+@router.get("/profile")
+def view_profile(
+    request: Request,
+    domain_id: int = Query(..., gt=0),
+    account_id: int = Query(..., gt=0),
+):
+    """
+    Secure selected-account profile.
+
+    The logged-in user is derived only from the Device Auth Bearer token.
+    No user_id/email is accepted from the caller.
+
+    The access token must also point to a CURRENT active zp_user_login
+    session. A logged-out or revoked device session is rejected immediately.
+    """
+    try:
+        auth_context = authenticate_active_device_user(
+            request
+        )
+
+        result = get_device_profile(
+            user_id=int(
+                auth_context.get("user_id") or 0
+            ),
+            domain_id=domain_id,
+            account_id=account_id,
+        )
+
+        return success_response(
+            message="Profile fetched successfully",
+            meta={
+                **_meta("authenticated"),
+                "domain_id": domain_id,
+                "account_id": account_id,
+            },
+            data=result,
+        )
+
+    except MobileTokenError as exc:
+        return _mobile_token_error_response(exc)
+    except DeviceProfileServiceError as exc:
+        return _profile_error_response(exc)
+    except Exception as exc:
+        return _unhandled_error(
+            "Unable to fetch profile",
+            "DEVICE_PROFILE_FETCH_FAILED",
+            exc,
+        )
 
 
 @router.post("/username")
