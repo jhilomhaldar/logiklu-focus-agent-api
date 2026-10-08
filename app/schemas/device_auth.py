@@ -49,6 +49,12 @@ class DeviceLogoutRequest(BaseModel):
     device_id: str = Field(..., min_length=8, max_length=128)
 
 
+class DeviceChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=1, max_length=255)
+    new_password: str = Field(..., min_length=1, max_length=255)
+    confirm_password: str = Field(..., min_length=1, max_length=255)
+
+
 class DeviceForgotPasswordRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=255)
 

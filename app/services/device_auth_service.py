@@ -2450,6 +2450,175 @@ def delete_all_saved_devices(
         },
     }
 
+
+def change_device_password(
+    user_id: int,
+    old_password: str,
+    new_password: str,
+    confirm_password: str,
+) -> Dict[str, Any]:
+    """
+    Change the password for the currently authenticated LogiKlu user.
+
+    Security / data rules:
+    - user_id comes from the authenticated Device Auth session, never request body.
+    - old_password is verified against zp_users.password using the same legacy
+      MD5 compatibility used by Device Auth login.
+    - new_password is stored directly in zp_users.password2.
+    - MD5(new_password) is stored in zp_users.password.
+    - The current authenticated session remains valid after the change.
+    """
+    user_id = _safe_int(user_id)
+    old_password = str(old_password or "")
+    new_password = str(new_password or "")
+    confirm_password = str(confirm_password or "")
+
+    if user_id <= 0:
+        raise DeviceAuthServiceError(
+            "Authenticated user is invalid",
+            "AUTH_USER_INVALID",
+            401,
+        )
+
+    if not old_password:
+        raise DeviceAuthServiceError(
+            "Old password is required",
+            "AUTH_OLD_PASSWORD_REQUIRED",
+            422,
+        )
+
+    if not new_password:
+        raise DeviceAuthServiceError(
+            "New password is required",
+            "AUTH_NEW_PASSWORD_REQUIRED",
+            422,
+        )
+
+    if not confirm_password:
+        raise DeviceAuthServiceError(
+            "Confirm password is required",
+            "AUTH_CONFIRM_PASSWORD_REQUIRED",
+            422,
+        )
+
+    if not hmac.compare_digest(
+        new_password,
+        confirm_password,
+    ):
+        raise DeviceAuthServiceError(
+            "New password and confirm password do not match",
+            "AUTH_PASSWORD_CONFIRM_MISMATCH",
+            422,
+        )
+
+    connection = None
+
+    try:
+        connection = get_master_connection()
+        connection.begin()
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    password,
+                    password2,
+                    status
+                FROM zp_users
+                WHERE id = %s
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (user_id,),
+            )
+            user = cursor.fetchone()
+
+            if not user:
+                raise DeviceAuthServiceError(
+                    "User does not exist",
+                    "AUTH_USER_NOT_FOUND",
+                    404,
+                )
+
+            if not _is_active_user_status(
+                user.get("status")
+            ):
+                raise DeviceAuthServiceError(
+                    "This user is not active. Please contact Administrator",
+                    "AUTH_USER_INACTIVE",
+                    403,
+                )
+
+            # Verify the old password exactly the same way Device Auth login does.
+            if not _verify_legacy_md5_password(
+                old_password,
+                user.get("password"),
+            ):
+                raise DeviceAuthServiceError(
+                    "Old password does not match",
+                    "AUTH_OLD_PASSWORD_INVALID",
+                    400,
+                )
+
+            new_password_md5 = hashlib.md5(
+                new_password.encode("utf-8")
+            ).hexdigest()
+
+            cursor.execute(
+                """
+                UPDATE zp_users
+                SET
+                    password = %s,
+                    password2 = %s
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (
+                    new_password_md5,
+                    new_password,
+                    user_id,
+                ),
+            )
+
+        connection.commit()
+
+        return {
+            "message": "Password changed successfully",
+            "data": {
+                "authentication_status": "authenticated",
+                "password_changed": True,
+                "session_valid": True,
+                "reauthentication_required": False,
+            },
+        }
+
+    except DeviceAuthServiceError:
+        if connection:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        raise
+    except Exception as exc:
+        if connection:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+
+        raise DeviceAuthServiceError(
+            "Unable to change password",
+            "AUTH_PASSWORD_CHANGE_FAILED",
+            500,
+            {
+                "error": str(exc),
+            },
+        ) from exc
+    finally:
+        if connection:
+            connection.close()
+
 def _build_password_reset_link(user_id: int, token: str) -> str:
     template = _safe_str(
         os.getenv("LOGIKLU_PASSWORD_RESET_URL_TEMPLATE")
