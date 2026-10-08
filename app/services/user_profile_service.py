@@ -1,3 +1,6 @@
+import hashlib
+import json
+import hmac
 from typing import Any, Dict, Optional
 
 from app.db.client import get_client_connection
@@ -7,7 +10,7 @@ from app.db.master import get_master_connection
 ROOT_URL = "https://logiklu.com/"
 
 
-class DeviceProfileServiceError(Exception):
+class UserProfileServiceError(Exception):
     def __init__(
         self,
         message: str,
@@ -114,14 +117,14 @@ def _fetch_master_user(user_id: int) -> Dict[str, Any]:
             user = cursor.fetchone()
 
         if not user:
-            raise DeviceProfileServiceError(
+            raise UserProfileServiceError(
                 "User does not exist",
                 "DEVICE_PROFILE_USER_NOT_FOUND",
                 404,
             )
 
         if _safe_int(user.get("status")) != 1:
-            raise DeviceProfileServiceError(
+            raise UserProfileServiceError(
                 "This user is not active",
                 "DEVICE_PROFILE_USER_INACTIVE",
                 403,
@@ -168,7 +171,7 @@ def _fetch_account(
             account = cursor.fetchone()
 
         if not account:
-            raise DeviceProfileServiceError(
+            raise UserProfileServiceError(
                 "Selected account does not exist or is inactive",
                 "DEVICE_PROFILE_ACCOUNT_NOT_FOUND",
                 404,
@@ -217,7 +220,7 @@ def _fetch_client_user(
             client_user = cursor.fetchone()
 
         if not client_user:
-            raise DeviceProfileServiceError(
+            raise UserProfileServiceError(
                 "You do not have access to the selected account",
                 "DEVICE_PROFILE_ACCOUNT_FORBIDDEN",
                 403,
@@ -231,7 +234,7 @@ def _fetch_client_user(
         # as an empty string. Do not treat a blank legacy value as INACTIVE.
         # Reject only an explicit INACTIVE state.
         if status == "INACTIVE":
-            raise DeviceProfileServiceError(
+            raise UserProfileServiceError(
                 "Your user is inactive for the selected account",
                 "DEVICE_PROFILE_ACCOUNT_USER_INACTIVE",
                 403,
@@ -243,7 +246,7 @@ def _fetch_client_user(
 
         # active_status controls archive state. Reject only explicit ARCHIVED.
         if active_status == "ARCHIVED":
-            raise DeviceProfileServiceError(
+            raise UserProfileServiceError(
                 "Your user is archived for the selected account",
                 "DEVICE_PROFILE_ACCOUNT_USER_ARCHIVED",
                 403,
@@ -472,7 +475,7 @@ def _fetch_landing_page(
             connection.close()
 
 
-def get_device_profile(
+def get_user_profile(
     user_id: int,
     domain_id: int,
     account_id: int,
@@ -497,14 +500,14 @@ def get_device_profile(
     account_id = _safe_int(account_id)
 
     if user_id <= 0:
-        raise DeviceProfileServiceError(
+        raise UserProfileServiceError(
             "Authenticated user is invalid",
             "DEVICE_PROFILE_AUTH_USER_INVALID",
             401,
         )
 
     if domain_id <= 0 or account_id <= 0:
-        raise DeviceProfileServiceError(
+        raise UserProfileServiceError(
             "domain_id and account_id are required",
             "DEVICE_PROFILE_ACCOUNT_REQUIRED",
             422,
@@ -520,7 +523,7 @@ def get_device_profile(
     client_database = _safe_str(account.get("databasename"))
 
     if not client_database:
-        raise DeviceProfileServiceError(
+        raise UserProfileServiceError(
             "Selected account database is not configured",
             "DEVICE_PROFILE_DATABASE_MISSING",
             500,
@@ -580,3 +583,273 @@ def get_device_profile(
             "url": landing_page["url"],
         },
     }
+
+
+def change_user_password(
+    user_id: int,
+    old_password: str,
+    new_password: str,
+    confirm_password: str,
+) -> Dict[str, Any]:
+    """
+    Change the password for the currently logged-in LogiKlu user.
+
+    Master DB only:
+    - Verify old_password against zp_users.password (MD5).
+    - Reject new_password if it is the current password.
+    - Reject new_password if it matches any of the last 3 previous passwords
+      stored in zp_users.password_history JSON.
+    - Store the current password hash at the front of password_history.
+    - Keep only the latest 3 previous password hashes.
+    - Store new password directly in zp_users.password2.
+    - Store MD5(new_password) in zp_users.password.
+
+    password_history format:
+        [
+            "most_recent_previous_md5",
+            "second_previous_md5",
+            "third_previous_md5"
+        ]
+
+    The caller's user_id must come from the authenticated active session.
+    """
+    user_id = _safe_int(user_id)
+    old_password = str(old_password or "")
+    new_password = str(new_password or "")
+    confirm_password = str(confirm_password or "")
+
+    if user_id <= 0:
+        raise UserProfileServiceError(
+            "Authenticated user is invalid",
+            "USER_PASSWORD_AUTH_USER_INVALID",
+            401,
+        )
+
+    if not old_password:
+        raise UserProfileServiceError(
+            "Old password is required",
+            "USER_PASSWORD_OLD_REQUIRED",
+            422,
+        )
+
+    if not new_password:
+        raise UserProfileServiceError(
+            "New password is required",
+            "USER_PASSWORD_NEW_REQUIRED",
+            422,
+        )
+
+    if not confirm_password:
+        raise UserProfileServiceError(
+            "Confirm password is required",
+            "USER_PASSWORD_CONFIRM_REQUIRED",
+            422,
+        )
+
+    if not hmac.compare_digest(
+        new_password,
+        confirm_password,
+    ):
+        raise UserProfileServiceError(
+            "New password and confirm password do not match",
+            "USER_PASSWORD_CONFIRM_MISMATCH",
+            422,
+        )
+
+    connection = None
+
+    try:
+        connection = get_master_connection()
+        connection.begin()
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    password,
+                    password2,
+                    password_history,
+                    status
+                FROM zp_users
+                WHERE id = %s
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (user_id,),
+            )
+            user = cursor.fetchone()
+
+            if not user:
+                raise UserProfileServiceError(
+                    "User does not exist",
+                    "USER_PASSWORD_USER_NOT_FOUND",
+                    404,
+                )
+
+            if _safe_int(user.get("status")) != 1:
+                raise UserProfileServiceError(
+                    "This user is not active",
+                    "USER_PASSWORD_USER_INACTIVE",
+                    403,
+                )
+
+            stored_password = _safe_str(
+                user.get("password")
+            )
+
+            current_password_md5 = (
+                stored_password
+                .split(":", 1)[0]
+                .strip()
+                .lower()
+            )
+
+            old_password_md5 = hashlib.md5(
+                old_password.encode("utf-8")
+            ).hexdigest().lower()
+
+            # Step 1: old password must match the current password.
+            if not hmac.compare_digest(
+                old_password_md5,
+                current_password_md5,
+            ):
+                raise UserProfileServiceError(
+                    "Old password does not match",
+                    "USER_PASSWORD_OLD_INVALID",
+                    400,
+                )
+
+            new_password_md5 = hashlib.md5(
+                new_password.encode("utf-8")
+            ).hexdigest().lower()
+
+            # Step 2: new password cannot be the current password.
+            if hmac.compare_digest(
+                new_password_md5,
+                current_password_md5,
+            ):
+                raise UserProfileServiceError(
+                    "New password cannot be the same as your current password",
+                    "USER_PASSWORD_SAME_AS_CURRENT",
+                    400,
+                )
+
+            # Step 3: read the last-3 previous password hashes from JSON.
+            raw_history = user.get("password_history")
+            password_history = []
+
+            if raw_history:
+                try:
+                    if isinstance(raw_history, (list, tuple)):
+                        parsed_history = list(raw_history)
+                    else:
+                        parsed_history = json.loads(
+                            str(raw_history)
+                        )
+
+                    if isinstance(parsed_history, list):
+                        for item in parsed_history:
+                            history_hash = _safe_str(item).lower()
+
+                            if history_hash:
+                                password_history.append(
+                                    history_hash
+                                )
+                except Exception:
+                    # Invalid legacy/bad JSON should not expose data or break
+                    # password changes. Treat it as no usable history.
+                    password_history = []
+
+            # Only the last 3 values are relevant even if older data contains more.
+            password_history = password_history[:3]
+
+            # Step 4: new password cannot match any of the last 3 previous hashes.
+            for history_hash in password_history:
+                if hmac.compare_digest(
+                    new_password_md5,
+                    history_hash,
+                ):
+                    raise UserProfileServiceError(
+                        "You cannot reuse any of your last 3 passwords",
+                        "USER_PASSWORD_RECENTLY_USED",
+                        400,
+                    )
+
+            # Step 5: move the current password into history, newest first.
+            new_history = []
+
+            if current_password_md5:
+                new_history.append(
+                    current_password_md5
+                )
+
+            for history_hash in password_history:
+                if (
+                    history_hash
+                    and history_hash not in new_history
+                ):
+                    new_history.append(
+                        history_hash
+                    )
+
+            # Keep only the latest 3 PREVIOUS passwords.
+            new_history = new_history[:3]
+
+            # Step 6: update zp_users in one statement.
+            cursor.execute(
+                """
+                UPDATE zp_users
+                SET
+                    password = %s,
+                    password2 = %s,
+                    password_history = %s
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (
+                    new_password_md5,
+                    new_password,
+                    json.dumps(new_history),
+                    user_id,
+                ),
+            )
+
+        connection.commit()
+
+        return {
+            "authentication_status": "authenticated",
+            "password_changed": True,
+            "password_history_rule": 3,
+            "session_valid": True,
+            "reauthentication_required": False,
+        }
+
+    except UserProfileServiceError:
+        if connection:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        raise
+
+    except Exception as exc:
+        if connection:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+
+        raise UserProfileServiceError(
+            "Unable to change password",
+            "USER_PASSWORD_CHANGE_FAILED",
+            500,
+            {
+                "error": str(exc),
+            },
+        ) from exc
+
+    finally:
+        if connection:
+            connection.close()
+
