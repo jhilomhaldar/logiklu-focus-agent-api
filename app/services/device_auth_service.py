@@ -486,6 +486,7 @@ def _complete_authenticated_response(
         group_code=_safe_str(group.get("group_code")),
         login_point=_safe_int(group.get("login_point")),
         auth_version=_safe_int(user.get("auth_token_version"), 1),
+        session_id=_safe_str(session.get("login_session")),
     )
 
     account_context = _build_account_context(

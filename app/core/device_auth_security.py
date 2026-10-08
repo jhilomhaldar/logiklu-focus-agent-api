@@ -127,10 +127,11 @@ def issue_device_access_token(
     group_code: str,
     login_point: int,
     auth_version: int = 1,
+    session_id: str = "",
 ) -> Dict[str, Any]:
     """
     Keep the existing LogiKlu mobile-user JWT contract for compatibility with
-    /auth/web-session. The new /auth/auth/device/* protocol can therefore hand the same
+    /auth/web-session. The new /auth/device/* protocol can therefore hand the same
     access token to the existing web-session handoff endpoint without changing
     the old /auth endpoints.
     """
@@ -139,4 +140,5 @@ def issue_device_access_token(
         group_code=group_code,
         login_point=login_point,
         auth_version=auth_version,
+        session_id=session_id,
     )
