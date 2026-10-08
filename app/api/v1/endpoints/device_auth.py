@@ -15,6 +15,7 @@ from app.core.response import (
 )
 from app.core.security import get_api_environment, get_client_ip
 from app.schemas.device_auth import (
+    DeviceChangePasswordRequest,
     DeviceForgotPasswordRequest,
     DeviceLoginRequest,
     DeviceLogoutRequest,
@@ -30,6 +31,7 @@ from app.services.device_profile_service import (
 )
 from app.services.device_auth_service import (
     DeviceAuthServiceError,
+    change_device_password,
     device_login,
     device_username_check,
     delete_all_saved_devices,
@@ -207,6 +209,59 @@ def view_profile(
         return _unhandled_error(
             "Unable to fetch profile",
             "DEVICE_PROFILE_FETCH_FAILED",
+            exc,
+        )
+
+
+
+@router.post("/change-password")
+def change_password(
+    payload: DeviceChangePasswordRequest,
+    request: Request,
+):
+    """
+    Change the logged-in user's password.
+
+    Requires:
+        Authorization: Bearer <Device Auth access token>
+
+    The Bearer token must belong to a current active zp_user_login session.
+    user_id/email are never accepted from the request body.
+
+    Storage:
+        zp_users.password2 = plaintext new password
+        zp_users.password  = MD5(new password)
+
+    The current authenticated session remains valid after password change.
+    """
+    try:
+        auth_context = authenticate_active_device_user(
+            request
+        )
+
+        result = change_device_password(
+            user_id=int(
+                auth_context.get("user_id") or 0
+            ),
+            old_password=payload.old_password,
+            new_password=payload.new_password,
+            confirm_password=payload.confirm_password,
+        )
+
+        return success_response(
+            message=result["message"],
+            meta=_meta("authenticated"),
+            data=result["data"],
+        )
+
+    except MobileTokenError as exc:
+        return _mobile_token_error_response(exc)
+    except DeviceAuthServiceError as exc:
+        return _service_error_response(exc)
+    except Exception as exc:
+        return _unhandled_error(
+            "Unable to change password",
+            "AUTH_PASSWORD_CHANGE_FAILED",
             exc,
         )
 
