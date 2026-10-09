@@ -321,6 +321,128 @@ def send_email_postman(params: Dict[str, Any], timeout: int = 10) -> Dict[str, A
     }
 
 
+
+def prepare_otp_mail_template(mail_content: str = "") -> str:
+    """
+    Modern LogiKlu OTP-only email frame.
+
+    Important:
+    - This does NOT replace prepare_mail_template().
+    - Password reset and other existing mail templates remain untouched.
+    - OTP user/admin emails use this dedicated template.
+    """
+    now = datetime.now()
+    today = f"{now.strftime('%B')} {now.day}, {now.year}"
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background:#f4f8fb;font-family:Arial,Helvetica,sans-serif;color:#082b55;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+           style="width:100%;background:#f4f8fb;margin:0;padding:0;">
+        <tr>
+            <td align="center" style="padding:46px 18px;">
+                <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0"
+                       style="
+                           width:640px;
+                           max-width:100%;
+                           background:#ffffff;
+                           border:1px solid #dfeaf2;
+                           border-top:6px solid #149ed9;
+                           border-radius:16px;
+                           box-shadow:0 8px 24px rgba(24,75,112,0.10);
+                           overflow:hidden;
+                       ">
+                    <tr>
+                        <td style="padding:30px 28px 0 28px;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                                <tr>
+                                    <td align="left" valign="middle" style="width:55%;">
+                                        <img
+                                            src="{LOGIKLU_ROOT_URL}templates/creative/includes/images/newimages/logo.jpg"
+                                            alt="LogiKlu"
+                                            width="150"
+                                            style="display:block;width:150px;max-width:100%;height:auto;border:0;"
+                                        >
+                                    </td>
+                                    <td align="right" valign="middle"
+                                        style="
+                                            width:45%;
+                                            font-family:Arial,Helvetica,sans-serif;
+                                            font-size:12px;
+                                            color:#41658b;
+                                            white-space:nowrap;
+                                        ">
+                                        {today}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:26px 28px 0 28px;">
+                            <div style="height:1px;background:#d9e5ee;font-size:0;line-height:0;">&nbsp;</div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="
+                            padding:28px;
+                            font-family:Arial,Helvetica,sans-serif;
+                            font-size:14px;
+                            line-height:1.65;
+                            color:#082b55;
+                        ">
+                            {mail_content}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:0 28px;">
+                            <div style="height:1px;background:#d9e5ee;font-size:0;line-height:0;">&nbsp;</div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td align="center" style="
+                            padding:24px 28px 28px 28px;
+                            font-family:Arial,Helvetica,sans-serif;
+                            color:#41658b;
+                        ">
+                            <div style="
+                                font-size:12px;
+                                line-height:1.5;
+                                font-weight:700;
+                                color:#074d8b;
+                            ">
+                                LogiKlu Inc.
+                            </div>
+                            <div style="
+                                margin-top:8px;
+                                font-size:11px;
+                                line-height:1.5;
+                                color:#637f9c;
+                            ">
+                                &copy; {now.year} LogiKlu Inc. All rights reserved.
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+
+    <a style="color:#ffffff;font-size:0;line-height:0;"
+       href="{{unsubscribe:https://logiklu.com}}"
+       target="_blank"
+       title="Click to unsubscribe">a</a>
+</body>
+</html>"""
+
 def send_logiklu_otp_email(
     recipient_name: str,
     recipient_email: str,
@@ -328,19 +450,11 @@ def send_logiklu_otp_email(
     timeout: int = 10,
 ) -> Dict[str, Any]:
     """
-    Send two separate OTP emails.
+    Send separate modern OTP emails to:
+    1) the actual user
+    2) LogiKlu OTP administrator mailbox
 
-    1) User OTP email:
-       Sent only to the actual user.
-
-    2) Administrator/support OTP email:
-       Sent separately to logikluotp@gmail.com.
-       It is NOT CC/BCC on the user's email.
-       It identifies the user and shows the same OTP.
-
-    If the user email fails, the caller receives the failure as before.
-    If the secondary administrator copy fails after the user email succeeds,
-    login is not blocked.
+    The admin copy is a separate mail, not CC/BCC.
     """
     recipient_name = str(recipient_name or "").strip()
     recipient_email = str(recipient_email or "").strip()
@@ -355,22 +469,83 @@ def send_logiklu_otp_email(
     safe_name = escape(recipient_name or "User")
     safe_email = escape(recipient_email)
     safe_otp = escape(otp)
+    otp_display = " ".join(list(otp))
 
     # ---------------------------------------------------------
-    # 1) USER OTP EMAIL
+    # USER EMAIL
     # ---------------------------------------------------------
     user_content = f"""
-        <p style="font-size:1.1em">Hi [[NAME]],</p>
-        <p>Here is your OTP for login.</p>
-        <h2 style="background: #155e9b;margin: 0 auto;width: max-content;padding: 0 10px;color: #fff;border-radius: 4px;">
-            {safe_otp}
-        </h2>
-        <p style="font-size:0.9em;">Regards,<br />LogiKlu Support</p>
+        <p style="
+            margin:0 0 12px 0;
+            padding:0;
+            font-family:Arial,Helvetica,sans-serif;
+            font-size:16px;
+            line-height:1.5;
+            font-weight:700;
+            color:#082b55;
+        ">
+            Hi {safe_name.split(" ")[0]},
+        </p>
+
+        <p style="
+            margin:0;
+            padding:0;
+            font-family:Arial,Helvetica,sans-serif;
+            font-size:14px;
+            line-height:1.7;
+            color:#082b55;
+        ">
+            Use the verification code below to complete your LogiKlu sign-in.
+        </p>
+
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+               style="margin-top:24px;">
+            <tr>
+                <td align="center" style="
+                    padding:25px 18px;
+                    background:#eef8ff;
+                    border:1px solid #a9dcfa;
+                    border-radius:14px;
+                ">
+                    <div style="
+                        font-family:Arial,Helvetica,sans-serif;
+                        font-size:12px;
+                        line-height:1.4;
+                        font-weight:700;
+                        letter-spacing:2px;
+                        color:#5d7898;
+                    ">
+                        VERIFICATION CODE
+                    </div>
+
+                    <div style="
+                        margin-top:11px;
+                        font-family:Arial,Helvetica,sans-serif;
+                        font-size:36px;
+                        line-height:1.2;
+                        font-weight:700;
+                        letter-spacing:6px;
+                        color:#064f8f;
+                    ">
+                        {escape(otp_display)}
+                    </div>
+
+                    <div style="
+                        margin-top:10px;
+                        font-family:Arial,Helvetica,sans-serif;
+                        font-size:13px;
+                        line-height:1.5;
+                        color:#4f6f8e;
+                    ">
+                        This code expires in 5 minutes.
+                    </div>
+                </td>
+            </tr>
+        </table>
     """
 
-    user_mail_html = prepare_mail_template(
-        recipient_name,
-        user_content,
+    user_mail_html = prepare_otp_mail_template(
+        user_content
     )
 
     user_result = send_email_postman(
@@ -404,67 +579,81 @@ def send_logiklu_otp_email(
         return user_result
 
     # ---------------------------------------------------------
-    # 2) SEPARATE ADMINISTRATOR OTP EMAIL
+    # ADMINISTRATOR EMAIL
     # ---------------------------------------------------------
-    otp_display = " ".join(list(otp))
-
     admin_content = f"""
-        <p style="font-size:1.1em;font-weight:600;">Hi Administrator,</p>
+        <p style="
+            margin:0 0 12px 0;
+            padding:0;
+            font-family:Arial,Helvetica,sans-serif;
+            font-size:16px;
+            line-height:1.5;
+            font-weight:700;
+            color:#082b55;
+        ">
+            Hi Administrator,
+        </p>
 
-        <p style="margin-top:14px;line-height:1.7;">
+        <p style="
+            margin:0;
+            padding:0;
+            font-family:Arial,Helvetica,sans-serif;
+            font-size:14px;
+            line-height:1.7;
+            color:#082b55;
+        ">
             <strong>{safe_name}</strong> ({safe_email}) is trying to sign in to
             LogiKlu. The user verification code is shown below.
         </p>
 
-        <div style="
-            margin:24px 10px;
-            padding:24px 20px;
-            text-align:center;
-            background:#eef8ff;
-            border:1px solid #a9dcfa;
-            border-radius:14px;
-        ">
-            <div style="
-                font-family:Arial,Helvetica,sans-serif;
-                font-size:12px;
-                font-weight:700;
-                letter-spacing:2px;
-                color:#5d7898;
-                margin-bottom:12px;
-            ">
-                VERIFICATION CODE
-            </div>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+               style="margin-top:24px;">
+            <tr>
+                <td align="center" style="
+                    padding:25px 18px;
+                    background:#eef8ff;
+                    border:1px solid #a9dcfa;
+                    border-radius:14px;
+                ">
+                    <div style="
+                        font-family:Arial,Helvetica,sans-serif;
+                        font-size:12px;
+                        line-height:1.4;
+                        font-weight:700;
+                        letter-spacing:2px;
+                        color:#5d7898;
+                    ">
+                        VERIFICATION CODE
+                    </div>
 
-            <div style="
-                font-family:Arial,Helvetica,sans-serif;
-                font-size:36px;
-                line-height:1.2;
-                font-weight:700;
-                letter-spacing:6px;
-                color:#064f8f;
-            ">
-                {escape(otp_display)}
-            </div>
+                    <div style="
+                        margin-top:11px;
+                        font-family:Arial,Helvetica,sans-serif;
+                        font-size:36px;
+                        line-height:1.2;
+                        font-weight:700;
+                        letter-spacing:6px;
+                        color:#064f8f;
+                    ">
+                        {escape(otp_display)}
+                    </div>
 
-            <div style="
-                font-family:Arial,Helvetica,sans-serif;
-                font-size:13px;
-                color:#4f6f8e;
-                margin-top:10px;
-            ">
-                This code expires in 5 minutes.
-            </div>
-        </div>
+                    <div style="
+                        margin-top:10px;
+                        font-family:Arial,Helvetica,sans-serif;
+                        font-size:13px;
+                        line-height:1.5;
+                        color:#4f6f8e;
+                    ">
+                        This code expires in 5 minutes.
+                    </div>
+                </td>
+            </tr>
+        </table>
     """
 
-    admin_mail_html = prepare_mail_template(
-        "Administrator",
-        admin_content,
-    )
-
-    admin_subject = (
-        f"OTP of user {recipient_name}({recipient_email}) "
-        "for login into LogiKlu"
+    admin_mail_html = prepare_otp_mail_template(
+        admin_content
     )
 
     try:
@@ -481,7 +670,10 @@ def send_logiklu_otp_email(
                         "email": "logikluotp@gmail.com",
                     }
                 ],
-                "email_subject": admin_subject,
+                "email_subject": (
+                    f"OTP of user {recipient_name}({recipient_email}) "
+                    "for login into LogiKlu"
+                ),
                 "email_body": admin_mail_html,
                 "email_form": {
                     "name": DEFAULT_FROM_NAME,
@@ -495,6 +687,7 @@ def send_logiklu_otp_email(
             timeout=timeout,
         )
     except Exception as exc:
+        # User OTP already succeeded; admin support copy must not block login.
         admin_result = {
             "status": "error",
             "message": str(exc),
