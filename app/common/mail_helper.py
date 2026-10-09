@@ -7,7 +7,8 @@ from typing import Any, Dict
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-import pymysql
+from app.db.master import get_master_connection
+
 
 
 MAIL_AUTH_URL = os.getenv(
@@ -79,35 +80,14 @@ def _post_form(url: str, payload: Dict[str, Any], timeout: int = 10) -> str:
 
 
 def _get_email_db_connection():
-    host = os.getenv("EMAIL_SEND_DB_HOST", "").strip()
-    user = os.getenv("EMAIL_SEND_DB_USER", "").strip()
-    password = os.getenv("EMAIL_SEND_DB_PASSWORD", "")
-    database = os.getenv("EMAIL_SEND_DB_NAME", "email_send_db").strip()
-    port = int(os.getenv("EMAIL_SEND_DB_PORT", "3306"))
-
-    if not host:
-        raise MailHelperError("EMAIL_SEND_DB_HOST is not configured")
-    if not user:
-        raise MailHelperError("EMAIL_SEND_DB_USER is not configured")
-    if not password:
-        raise MailHelperError("EMAIL_SEND_DB_PASSWORD is not configured")
-
+    """
+    Use the API server's existing master DB connection. The mail queue is
+    addressed with its fully-qualified table name: email_send_db.email_send.
+    """
     try:
-        return pymysql.connect(
-            host=host,
-            user=user,
-            password=password,
-            database=database,
-            port=port,
-            charset="utf8mb4",
-            cursorclass=pymysql.cursors.DictCursor,
-            autocommit=False,
-            connect_timeout=10,
-            read_timeout=10,
-            write_timeout=10,
-        )
+        return get_master_connection()
     except Exception as exc:
-        raise MailHelperError(f"Unable to connect to email database: {exc}") from exc
+        raise MailHelperError(f"Unable to connect to master database: {exc}") from exc
 
 
 def prepare_mail_template(name: str = "", mail_content: str = "") -> str:
@@ -274,7 +254,7 @@ def send_email_postman(params: Dict[str, Any], timeout: int = 10) -> Dict[str, A
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO email_send
+                INSERT INTO email_send_db.email_send
                 (
                     token_section,
                     client_info,
@@ -350,18 +330,17 @@ def send_logiklu_otp_email(
     """
     Send two separate OTP emails.
 
-    1. User email:
-       - Sent only to the actual user.
-       - Contains the normal user-facing OTP message.
+    1) User OTP email:
+       Sent only to the actual user.
 
-    2. Administrator/support OTP email:
-       - Sent separately to logikluotp@gmail.com.
-       - NOT sent as CC/BCC on the user's message.
-       - Uses the administrator protocol from the LogiKlu web login:
-         it identifies which user is signing in and shows that user's OTP.
+    2) Administrator/support OTP email:
+       Sent separately to logikluotp@gmail.com.
+       It is NOT CC/BCC on the user's email.
+       It identifies the user and shows the same OTP.
 
-    The administrator copy is secondary operational/support mail. If it fails
-    after the user OTP has been delivered, the login flow is not blocked.
+    If the user email fails, the caller receives the failure as before.
+    If the secondary administrator copy fails after the user email succeeds,
+    login is not blocked.
     """
     recipient_name = str(recipient_name or "").strip()
     recipient_email = str(recipient_email or "").strip()
@@ -369,6 +348,7 @@ def send_logiklu_otp_email(
 
     if not recipient_email:
         raise MailHelperError("Recipient email is required")
+
     if not otp:
         raise MailHelperError("OTP is required")
 
@@ -420,7 +400,6 @@ def send_logiklu_otp_email(
         timeout=timeout,
     )
 
-    # Preserve existing Device Auth behavior if the actual user's email fails.
     if str(user_result.get("status") or "").strip().lower() == "error":
         return user_result
 
@@ -516,8 +495,6 @@ def send_logiklu_otp_email(
             timeout=timeout,
         )
     except Exception as exc:
-        # The user OTP has already been sent successfully.
-        # Do not block authentication because the secondary admin copy failed.
         admin_result = {
             "status": "error",
             "message": str(exc),
@@ -529,3 +506,56 @@ def send_logiklu_otp_email(
         "admin_mail": admin_result,
     }
 
+
+def send_logiklu_password_reset_email(
+    recipient_name: str,
+    recipient_email: str,
+    reset_link: str,
+    timeout: int = 10,
+) -> Dict[str, Any]:
+    recipient_name = str(recipient_name or "").strip()
+    recipient_email = str(recipient_email or "").strip()
+    reset_link = str(reset_link or "").strip()
+
+    if not recipient_email:
+        raise MailHelperError("Recipient email is required")
+    if not reset_link:
+        raise MailHelperError("Password reset link is required")
+
+    safe_link = escape(reset_link, quote=True)
+
+    content = f"""
+        <p style="font-size:1.1em">Hi [[NAME]],</p>
+        <p>
+            Please <a href="{safe_link}" target="_blank">click here</a>
+            to reset your password. This link will expire in 48 hours.
+        </p>
+        <p>&nbsp;</p>
+        <p style="font-size:0.9em;">Regards,<br />LogiKlu Support</p>
+    """
+
+    mail_html = prepare_mail_template(recipient_name, content)
+
+    return send_email_postman(
+        {
+            "client_info": {
+                "client_name": "LogiKlu",
+                "website": "https://logiklu.com",
+                "section": "Password Reset",
+            },
+            "email_recepients_to": [
+                {"name": recipient_name, "email": recipient_email}
+            ],
+            "email_subject": "Reset Password for LogiKlu",
+            "email_body": mail_html,
+            "email_form": {
+                "name": DEFAULT_FROM_NAME,
+                "email": DEFAULT_FROM_EMAIL,
+            },
+            "in_reply_to": {
+                "name": DEFAULT_FROM_NAME,
+                "email": DEFAULT_FROM_EMAIL,
+            },
+        },
+        timeout=timeout,
+    )
